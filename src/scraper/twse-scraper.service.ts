@@ -1,5 +1,7 @@
 import * as cheerio from 'cheerio';
 import * as iconv from 'iconv-lite';
+import * as numeral from 'numeral';
+import { DateTime } from 'luxon';
 import { Injectable } from '@nestjs/common';
 import { HttpService } from '@nestjs/axios';
 import { firstValueFrom } from 'rxjs';
@@ -31,6 +33,39 @@ export class TwseScraperService {
         industry: td.eq(6).text().trim(), // 產業別
       };
     }).toArray();
+
+    return data;
+  }
+
+  async fetchMarketTrades(date: string) {
+    const query = new URLSearchParams({                   // 建立 Query 參數
+      response: 'json',                                   // 指定回應格式為 JSON
+      date: DateTime.fromISO(date).toFormat('yyyyMMdd'),  // 將 ISO Date 轉換成 `yyyyMMdd` 格式
+    });
+    const url = `https://www.twse.com.tw/exchangeReport/FMTQIK?${query}`;
+
+    // 取得回應資料
+    const responseData = await firstValueFrom(this.httpService.get(url))
+      .then(response => (response.data.stat === 'OK') && response.data);
+
+    // 若該日期非交易日或尚無成交資訊則回傳 null
+    if (!responseData) return null;
+
+    // 整理回應資料
+    const data = responseData.data
+      .map(row => {
+        const [ date, ...values ] = row;  // [ 日期, 成交股數, 成交金額, 成交筆數, 發行量加權股價指數, 漲跌點數 ]
+
+        // 將 `民國年/MM/dd` 的日期格式轉換成 `yyyy-MM-dd`
+        const [ year, month, day ] = date.split('/');
+        const formattedDate = DateTime.fromFormat(`${+year + 1911}${month}${day}`, 'yyyyMMdd').toISODate();
+
+        // 轉為數字格式
+        const [ tradeVolume, tradeValue, transaction, price, change ] = values.map(value => numeral(value).value());
+
+        return { date: formattedDate, tradeVolume, tradeValue, transaction, price, change };
+      })
+      .find(data => data.date === date) || null;  // 取得目標日期的成交資訊
 
     return data;
   }
