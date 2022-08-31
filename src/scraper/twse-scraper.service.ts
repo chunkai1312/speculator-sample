@@ -69,4 +69,41 @@ export class TwseScraperService {
 
     return data;
   }
+
+  async fetchMarketBreadth(date: string) {
+    const query = new URLSearchParams({                   // 建立 Query 參數
+      response: 'json',                                   // 指定回應格式為 JSON
+      date: DateTime.fromISO(date).toFormat('yyyyMMdd'),  // 將 ISO Date 轉換成 `yyyyMMdd` 格式
+      type: 'MS',                                         // 指定類別為大盤統計資訊
+    });
+    const url = `https://www.twse.com.tw/exchangeReport/MI_INDEX?${query}`;
+
+    // 取得回應資料
+    const responseData = await firstValueFrom(this.httpService.get(url))
+      .then(response => (response.data.stat === 'OK') && response.data);
+
+    // 若該日期非交易日或尚無成交資訊則回傳 null
+    if (!responseData) return null;
+
+    const raw = responseData.data8.map(row => row[2]); // 取股票市場統計
+
+    // 整理回應資料
+    const [ up, limitUp, down, limitDown, unchanged, unmatched, notApplicable ] = [
+      ...raw[0].replace(')', '').split('('),  // 取出漲停家數
+      ...raw[1].replace(')', '').split('('),  // 取出漲停家數
+      ...raw.slice(2),
+    ].map(value => numeral(value).value());   // 轉為數字格式
+
+    const data = {
+      date,
+      up,
+      limitUp,
+      down,
+      limitDown,
+      unchanged,
+      unmatched: unmatched + notApplicable, // 合併未成交及未比價
+    };
+
+    return data;
+  }
 }
