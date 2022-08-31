@@ -1,4 +1,7 @@
 import { Module } from '@nestjs/common';
+import { TwseScraperService } from './twse-scraper.service';
 
-@Module({})
+@Module({
+  providers: [TwseScraperService]
+})
 export class ScraperModule {}
