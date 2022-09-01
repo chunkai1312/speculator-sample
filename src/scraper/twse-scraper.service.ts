@@ -106,4 +106,75 @@ export class TwseScraperService {
 
     return data;
   }
+
+  async fetchInstInvestorsTrades(date: string) {
+    const query = new URLSearchParams({                       // 建立 Query 參數
+      response: 'json',                                       // 指定回應格式為 JSON
+      dayDate: DateTime.fromISO(date).toFormat('yyyyMMdd'),   // 將 ISO Date 格式轉換成 `yyyyMMdd`
+      type: 'day',                                            // 輸出日報表
+    });
+    const url = `https://www.twse.com.tw/fund/BFI82U?${query}`;
+
+    // 取得回應資料
+    const responseData = await firstValueFrom(this.httpService.get(url))
+      .then(response => (response.data.stat === 'OK') && response.data);
+
+    // 若該日期非交易日或尚無成交資訊則回傳 null
+    if (!responseData) return null;
+
+    // 整理回應資料
+    const raw = responseData.data
+      .map(data => data.slice(1)).flat()              // 取買賣金額並減少一層陣列嵌套
+      .map(data => numeral(data).value() || +data);   // 轉為數字格式
+
+    const [
+      dealersProprietaryBuy,            // 自營商(自行買賣)買進金額
+      dealersProprietarySell,           // 自營商(自行買賣)賣出金額
+      dealersProprietaryNetBuySell,     // 自營商(自行買賣)買賣超
+      dealersHedgeBuy,                  // 自營商(避險)買進金額
+      dealersHedgeSell,                 // 自營商(避險)賣出金額
+      dealersHedgeNetBuySell,           // 自營商(避險)買賣超
+      sitcBuy,                          // 投信買進金額
+      sitcSell,                         // 投信賣出金額
+      sitcNetBuySell,                   // 投信買賣超
+      foreignDealersExcludedBuy,        // 外資及陸資(不含外資自營商)買進金額
+      foreignDealersExcludedSell,       // 外資及陸資(不含外資自營商)賣出金額
+      foreignDealersExcludedNetBuySell, // 外資及陸資(不含外資自營商)買賣超
+      foreignDealersBuy,                // 外資自營商買進金額
+      foreignDealersSell,               // 外資自營商賣出金額
+      foreignDealersNetBuySell,         // 外資自營商買賣超
+    ] = raw;
+
+    const foreignInvestorsBuy = foreignDealersExcludedBuy + foreignDealersBuy;                      // 外資買進金額
+    const foreignInvestorsSell = foreignDealersExcludedSell + foreignDealersSell;                   // 外資賣出金額
+    const foreignInvestorsNetBuySell = foreignDealersExcludedNetBuySell + foreignDealersNetBuySell; // 外資買賣超
+    const dealersBuy = dealersProprietaryBuy + dealersHedgeBuy;                                     // 自營商買進金額
+    const dealersSell = dealersProprietarySell + dealersHedgeSell;                                  // 自營商賣出金額
+    const dealersNetBuySell = dealersProprietaryNetBuySell + dealersHedgeNetBuySell;                // 自營商買賣超
+
+    return {
+      date,
+      dealersProprietaryBuy,            // 自營商(自行買賣)買進金額
+      dealersProprietarySell,           // 自營商(自行買賣)賣出金額
+      dealersProprietaryNetBuySell,     // 自營商(自行買賣)買賣超
+      dealersHedgeBuy,                  // 自營商(避險)買進金額
+      dealersHedgeSell,                 // 自營商(避險)賣出金額
+      dealersHedgeNetBuySell,           // 自營商(避險)買賣超
+      sitcBuy,                          // 投信買進金額
+      sitcSell,                         // 投信賣出金額
+      sitcNetBuySell,                   // 投信買賣超
+      foreignDealersExcludedBuy,        // 外資及陸資(不含外資自營商)買進金額
+      foreignDealersExcludedSell,       // 外資及陸資(不含外資自營商)賣出金額
+      foreignDealersExcludedNetBuySell, // 外資及陸資(不含外資自營商)買賣超
+      foreignDealersBuy,                // 外資自營商買進金額
+      foreignDealersSell,               // 外資自營商賣出金額
+      foreignDealersNetBuySell,         // 外資自營商買賣超
+      foreignInvestorsBuy,              // 外資買進金額
+      foreignInvestorsSell,             // 外資賣出金額
+      foreignInvestorsNetBuySell,       // 外資買賣超
+      dealersBuy,                       // 自營商買進金額
+      dealersSell,                      // 自營商賣出金額
+      dealersNetBuySell,                // 自營商買賣超
+    };
+  }
 }
