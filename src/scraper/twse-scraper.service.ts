@@ -38,9 +38,13 @@ export class TwseScraperService {
   }
 
   async fetchMarketTrades(date: string) {
-    const query = new URLSearchParams({                   // 建立 Query 參數
-      response: 'json',                                   // 指定回應格式為 JSON
-      date: DateTime.fromISO(date).toFormat('yyyyMMdd'),  // 將 ISO Date 轉換成 `yyyyMMdd` 格式
+    // 將 `date` 轉換成 `yyyyMMdd` 格式
+    const formattedDate = DateTime.fromISO(date).toFormat('yyyyMMdd');
+
+    // 建立 URL 查詢參數
+    const query = new URLSearchParams({
+      response: 'json',     // 指定回應格式為 JSON
+      date: formattedDate,  // 指定資料日期
     });
     const url = `https://www.twse.com.tw/exchangeReport/FMTQIK?${query}`;
 
@@ -54,16 +58,26 @@ export class TwseScraperService {
     // 整理回應資料
     const data = responseData.data
       .map(row => {
-        const [ date, ...values ] = row;  // [ 日期, 成交股數, 成交金額, 成交筆數, 發行量加權股價指數, 漲跌點數 ]
+        // [ 日期, 成交股數, 成交金額, 成交筆數, 發行量加權股價指數, 漲跌點數 ]
+        const [ date, ...values ] = row;
 
         // 將 `民國年/MM/dd` 的日期格式轉換成 `yyyy-MM-dd`
         const [ year, month, day ] = date.split('/');
-        const formattedDate = DateTime.fromFormat(`${+year + 1911}${month}${day}`, 'yyyyMMdd').toISODate();
+        const formatted = `${+year + 1911}${month}${day}`;
+        const formattedDate = DateTime.fromFormat(formatted, 'yyyyMMdd').toISODate();
 
         // 轉為數字格式
-        const [ tradeVolume, tradeValue, transaction, price, change ] = values.map(value => numeral(value).value());
+        const [ tradeVolume, tradeValue, transaction, price, change ]
+          = values.map(value => numeral(value).value());
 
-        return { date: formattedDate, tradeVolume, tradeValue, transaction, price, change };
+        return {
+          date: formattedDate,
+          tradeVolume,
+          tradeValue,
+          transaction,
+          price,
+          change,
+        };
       })
       .find(data => data.date === date) || null;  // 取得目標日期的成交資訊
 
@@ -71,10 +85,14 @@ export class TwseScraperService {
   }
 
   async fetchMarketBreadth(date: string) {
-    const query = new URLSearchParams({                   // 建立 Query 參數
-      response: 'json',                                   // 指定回應格式為 JSON
-      date: DateTime.fromISO(date).toFormat('yyyyMMdd'),  // 將 ISO Date 轉換成 `yyyyMMdd` 格式
-      type: 'MS',                                         // 指定類別為大盤統計資訊
+    // 將 `date` 轉換成 `yyyyMMdd` 格式
+    const formattedDate = DateTime.fromISO(date).toFormat('yyyyMMdd');
+
+    // 建立 URL 查詢參數
+    const query = new URLSearchParams({
+      response: 'json',     // 指定回應格式為 JSON
+      date: formattedDate,  // 指定資料日期
+      type: 'MS',           // 指定類別為大盤統計資訊
     });
     const url = `https://www.twse.com.tw/exchangeReport/MI_INDEX?${query}`;
 
@@ -85,9 +103,8 @@ export class TwseScraperService {
     // 若該日期非交易日或尚無成交資訊則回傳 null
     if (!responseData) return null;
 
-    const raw = responseData.data8.map(row => row[2]); // 取股票市場統計
-
     // 整理回應資料
+    const raw = responseData.data8.map(row => row[2]);  // 取股票市場統計
     const [ up, limitUp, down, limitDown, unchanged, unmatched, notApplicable ] = [
       ...raw[0].replace(')', '').split('('),  // 取出漲停家數
       ...raw[1].replace(')', '').split('('),  // 取出漲停家數
@@ -101,17 +118,21 @@ export class TwseScraperService {
       down,
       limitDown,
       unchanged,
-      unmatched: unmatched + notApplicable, // 合併未成交及未比價
+      unmatched: unmatched + notApplicable, // 未成交(含暫停交易)家數
     };
 
     return data;
   }
 
   async fetchInstInvestorsTrades(date: string) {
-    const query = new URLSearchParams({                       // 建立 Query 參數
-      response: 'json',                                       // 指定回應格式為 JSON
-      dayDate: DateTime.fromISO(date).toFormat('yyyyMMdd'),   // 將 ISO Date 格式轉換成 `yyyyMMdd`
-      type: 'day',                                            // 輸出日報表
+    // 將 `date` 轉換成 `yyyyMMdd` 格式
+    const formattedDate = DateTime.fromISO(date).toFormat('yyyyMMdd');
+
+    // 建立 URL 查詢參數
+    const query = new URLSearchParams({
+      response: 'json',         // 指定回應格式為 JSON
+      dayDate: formattedDate,   // 指定資料日期
+      type: 'day',              // 指定輸出日報表
     });
     const url = `https://www.twse.com.tw/fund/BFI82U?${query}`;
 
@@ -124,7 +145,7 @@ export class TwseScraperService {
 
     // 整理回應資料
     const raw = responseData.data
-      .map(data => data.slice(1)).flat()              // 取買賣金額並減少一層陣列嵌套
+      .map(data => data.slice(1)).flat()  // 取出買賣金額並減少一層陣列嵌套
       .map(data => numeral(data).value() || +data);   // 轉為數字格式
 
     const [
@@ -145,36 +166,110 @@ export class TwseScraperService {
       foreignDealersNetBuySell,         // 外資自營商買賣超
     ] = raw;
 
-    const foreignInvestorsBuy = foreignDealersExcludedBuy + foreignDealersBuy;                      // 外資買進金額
-    const foreignInvestorsSell = foreignDealersExcludedSell + foreignDealersSell;                   // 外資賣出金額
-    const foreignInvestorsNetBuySell = foreignDealersExcludedNetBuySell + foreignDealersNetBuySell; // 外資買賣超
-    const dealersBuy = dealersProprietaryBuy + dealersHedgeBuy;                                     // 自營商買進金額
-    const dealersSell = dealersProprietarySell + dealersHedgeSell;                                  // 自營商賣出金額
-    const dealersNetBuySell = dealersProprietaryNetBuySell + dealersHedgeNetBuySell;                // 自營商買賣超
+    // 計算外資合計買進金額
+    const foreignInvestorsBuy = foreignDealersExcludedBuy + foreignDealersBuy;
+
+    // 外資合計賣出金額
+    const foreignInvestorsSell = foreignDealersExcludedSell + foreignDealersSell;
+
+    // 計算外資合計買賣超
+    const foreignInvestorsNetBuySell = foreignDealersExcludedNetBuySell + foreignDealersNetBuySell;
+
+    // 計算自營商合計買進金額
+    const dealersBuy = dealersProprietaryBuy + dealersHedgeBuy;
+
+    // 計算自營商合計賣出金額
+    const dealersSell = dealersProprietarySell + dealersHedgeSell;
+
+    // 計算自營商合計買賣超
+    const dealersNetBuySell = dealersProprietaryNetBuySell + dealersHedgeNetBuySell;
 
     return {
       date,
-      dealersProprietaryBuy,            // 自營商(自行買賣)買進金額
-      dealersProprietarySell,           // 自營商(自行買賣)賣出金額
-      dealersProprietaryNetBuySell,     // 自營商(自行買賣)買賣超
-      dealersHedgeBuy,                  // 自營商(避險)買進金額
-      dealersHedgeSell,                 // 自營商(避險)賣出金額
-      dealersHedgeNetBuySell,           // 自營商(避險)買賣超
-      sitcBuy,                          // 投信買進金額
-      sitcSell,                         // 投信賣出金額
-      sitcNetBuySell,                   // 投信買賣超
-      foreignDealersExcludedBuy,        // 外資及陸資(不含外資自營商)買進金額
-      foreignDealersExcludedSell,       // 外資及陸資(不含外資自營商)賣出金額
-      foreignDealersExcludedNetBuySell, // 外資及陸資(不含外資自營商)買賣超
-      foreignDealersBuy,                // 外資自營商買進金額
-      foreignDealersSell,               // 外資自營商賣出金額
-      foreignDealersNetBuySell,         // 外資自營商買賣超
-      foreignInvestorsBuy,              // 外資買進金額
-      foreignInvestorsSell,             // 外資賣出金額
-      foreignInvestorsNetBuySell,       // 外資買賣超
-      dealersBuy,                       // 自營商買進金額
-      dealersSell,                      // 自營商賣出金額
-      dealersNetBuySell,                // 自營商買賣超
+      foreignDealersExcludedBuy,
+      foreignDealersExcludedSell,
+      foreignDealersExcludedNetBuySell,
+      foreignDealersBuy,
+      foreignDealersSell,
+      foreignDealersNetBuySell,
+      foreignInvestorsBuy,
+      foreignInvestorsSell,
+      foreignInvestorsNetBuySell,
+      sitcBuy,
+      sitcSell,
+      sitcNetBuySell,
+      dealersProprietaryBuy,
+      dealersProprietarySell,
+      dealersProprietaryNetBuySell,
+      dealersHedgeBuy,
+      dealersHedgeSell,
+      dealersHedgeNetBuySell,
+      dealersBuy,
+      dealersSell,
+      dealersNetBuySell,
+    };
+  }
+
+  async fetchMarginTransactions(date: string) {
+    // 將 `date` 轉換成 `yyyyMMdd` 格式
+    const formattedDate = DateTime.fromISO(date).toFormat('yyyyMMdd');
+
+    // 建立 URL 查詢參數
+    const query = new URLSearchParams({
+      response: 'json',     // 指定回應格式為 JSON
+      date: formattedDate,  // 指定資料日期
+      selectType: 'MS',     // 指定分類項目為信用交易統計
+    });
+    const url = `https://www.twse.com.tw/en/exchangeReport/MI_MARGN?${query}`;
+
+    // 取得回應資料
+    const responseData = await firstValueFrom(this.httpService.get(url))
+      .then(response => (response.data.stat === 'OK') ? response.data : null);
+
+    // 若該日期非交易日或尚無信用交易統計則回傳 null
+    if (!responseData) return null;
+    if (!responseData.creditList.length) return null;
+
+    // 整理回應資料
+    const raw = responseData.creditList
+      .map(data => data.slice(1)).flat()  // 取出買賣金額並減少一層陣列嵌套
+      .map(data => numeral(data).value() || +data); // 轉為數字格式
+
+    const [
+      marginPurchase,           // 融資(交易單位)-買進
+      marginSale,               // 融資(交易單位)-賣出
+      cashRedemption,           // 融資(交易單位)-現金(券)償還
+      marginBalancePrev,        // 融資(交易單位)-前日餘額
+      marginBalance,            // 融資(交易單位)-今日餘額
+      shortCovering,            // 融券(交易單位)-買進
+      shortSale,                // 融券(交易單位)-賣出
+      stockRedemption,          // 融券(交易單位)-現金(券)償還
+      shortBalancePrev,         // 融券(交易單位)-前日餘額
+      shortBalance,             // 融券(交易單位)-今日餘額
+      marginPurchaseValue,      // 融資金額(仟元)-買進
+      marginSaleValue,          // 融資金額(仟元)-賣出
+      cashRedemptionValue,      // 融資金額(仟元)-現金(券)償還
+      marginBalanceValuePrev,   // 融資金額(仟元)-前日餘額
+      marginBalanceValue,       // 融資金額(仟元)-今日餘額
+    ] = raw;
+
+    // 計算融資餘額增減(交易單位)
+    const marginChange = marginBalance - marginBalancePrev;
+
+    // 計算融資餘額增減(仟元)
+    const marginChangeValue = marginBalanceValue - marginBalanceValuePrev;
+
+    // 計算融券餘額增減(交易單位)
+    const shortChange = shortBalance - shortBalancePrev;
+
+    return {
+      date,
+      marginBalance,
+      marginChange,
+      marginBalanceValue,
+      marginChangeValue,
+      shortBalance,
+      shortChange,
     };
   }
 }
