@@ -113,4 +113,186 @@ export class TaifexScraperService {
       dealersNetOiValue,
     };
   }
+
+  async fetchInstInvestorsTxoTrades(date: string) {
+    // 將 `date` 轉換成 `yyyy/MM/dd` 格式
+    const queryDate = DateTime.fromISO(date).toFormat('yyyy/MM/dd');
+
+    // 建立 FormData
+    const form = new URLSearchParams({
+      queryStartDate: queryDate,  // 日期(起)
+      queryEndDate: queryDate,    // 日期(迄)
+      commodityId: 'TXO',         // 契約-臺指選擇權
+    });
+    const url = 'https://www.taifex.com.tw/cht/3/callsAndPutsDateDown';
+
+    // 取得回應資料並將 CSV 轉換成 JSON 格式及正確編碼
+    const responseData = await firstValueFrom(this.httpService.post(url, form, { responseType: 'arraybuffer' }))
+      .then(response => csvtojson({ noheader: true, output: 'csv' }).fromString(iconv.decode(response.data, 'big5')));
+
+    // 若該日期非交易日或尚無資料則回傳 null
+    const [ fields, dealersCalls, sitcCalls, finiCalls, dealersPuts, sitcPuts, finiPuts ] = responseData;
+    if (fields[0] !== '日期') return null;
+
+    // 合併三大法人交易數據並將 string 型別數字轉換成 number
+    const raw = [
+      ...dealersCalls.slice(4),
+      ...sitcCalls.slice(4),
+      ...finiCalls.slice(4),
+      ...dealersPuts.slice(4),
+      ...sitcPuts.slice(4),
+      ...finiPuts.slice(4),
+    ].map(data => numeral(data).value());
+
+    const [
+      dealersCallsLongTradeVolume,  // 自營商-買權買方交易口數
+      dealersCallsLongTradeValue,   // 自營商-買權買方交易契約金額(千元)
+      dealersCallsShortTradeVolume, // 自營商-買權賣方交易口數
+      dealersCallsShortTradeValue,  // 自營商-買權賣方交易契約金額(千元)
+      dealersCallsNetTradeVolume,   // 自營商-買權交易口數買賣淨額
+      dealersCallsNetTradeValue,    // 自營商-買權交易契約金額買賣淨額(千元)
+      dealersCallsLongOiVolume,     // 自營商-買權買方未平倉口數,
+      dealersCallsLongOiValue,      // 自營商-買權買方未平倉契約金額(千元)
+      dealersCallsShortOiVolume,    // 自營商-買權賣方未平倉口數
+      dealersCallsShortOiValue,     // 自營商-買權賣方未平倉契約金額(千元)
+      dealersCallsNetOiVolume,      // 自營商-買權未平倉口數買賣淨額
+      dealersCallsNetOiValue,       // 自營商-買權未平倉契約金額買賣淨額(千元)
+      sitcCallsLongTradeVolume,     // 投信-買權買方交易口數
+      sitcCallsLongTradeValue,      // 投信-買權買方交易契約金額(千元)
+      sitcCallsShortTradeVolume,    // 投信-買權賣方交易口數
+      sitcCallsShortTradeValue,     // 投信-買權賣方交易契約金額(千元)
+      sitcCallsNetTradeVolume,      // 投信-買權交易口數買賣淨額
+      sitcCallsNetTradeValue,       // 投信-買權交易契約金額買賣淨額(千元)
+      sitcCallsLongOiVolume,        // 投信-買權買方未平倉口數,
+      sitcCallsLongOiValue,         // 投信-買權買方未平倉契約金額(千元)
+      sitcCallsShortOiVolume,       // 投信-買權賣方未平倉口數
+      sitcCallsShortOiValue,        // 投信-買權賣方未平倉契約金額(千元)
+      sitcCallsNetOiVolume,         // 投信-買權未平倉口數買賣淨額
+      sitcCallsNetOiValue,          // 投信-買權未平倉契約金額買賣淨額(千元)
+      finiCallsLongTradeVolume,     // 外資-買權買方交易口數
+      finiCallsLongTradeValue,      // 外資-買權買方交易契約金額(千元)
+      finiCallsShortTradeVolume,    // 外資-買權賣方交易口數
+      finiCallsShortTradeValue,     // 外資-買權賣方交易契約金額(千元)
+      finiCallsNetTradeVolume,      // 外資-買權交易口數買賣淨額
+      finiCallsNetTradeValue,       // 外資-買權交易契約金額買賣淨額(千元)
+      finiCallsLongOiVolume,        // 外資-買權買方未平倉口數,
+      finiCallsLongOiValue,         // 外資-買權買方未平倉契約金額(千元)
+      finiCallsShortOiVolume,       // 外資-買權賣方未平倉口數
+      finiCallsShortOiValue,        // 外資-買權賣方未平倉契約金額(千元)
+      finiCallsNetOiVolume,         // 外資-買權未平倉口數買賣淨額
+      finiCallsNetOiValue,          // 外資-買權未平倉契約金額買賣淨額(千元)
+      dealersPutsLongTradeVolume,   // 自營商-賣權買方交易口數
+      dealersPutsLongTradeValue,    // 自營商-賣權買方交易契約金額(千元)
+      dealersPutsShortTradeVolume,  // 自營商-賣權賣方交易口數
+      dealersPutsShortTradeValue,   // 自營商-賣權賣方交易契約金額(千元)
+      dealersPutsNetTradeVolume,    // 自營商-賣權交易口數買賣淨額
+      dealersPutsNetTradeValue,     // 自營商-賣權交易契約金額買賣淨額(千元)
+      dealersPutsLongOiVolume,      // 自營商-賣權買方未平倉口數,
+      dealersPutsLongOiValue,       // 自營商-賣權買方未平倉契約金額(千元)
+      dealersPutsShortOiVolume,     // 自營商-賣權賣方未平倉口數
+      dealersPutsShortOiValue,      // 自營商-賣權賣方未平倉契約金額(千元)
+      dealersPutsNetOiVolume,       // 自營商-賣權未平倉口數買賣淨額
+      dealersPutsNetOiValue,        // 自營商-賣權未平倉契約金額買賣淨額(千元)
+      sitcPutsLongTradeVolume,      // 投信-賣權買方交易口數
+      sitcPutsLongTradeValue,       // 投信-賣權買方交易契約金額(千元)
+      sitcPutsShortTradeVolume,     // 投信-賣權賣方交易口數
+      sitcPutsShortTradeValue,      // 投信-賣權賣方交易契約金額(千元)
+      sitcPutsNetTradeVolume,       // 投信-賣權交易口數買賣淨額
+      sitcPutsNetTradeValue,        // 投信-賣權交易契約金額買賣淨額(千元)
+      sitcPutsLongOiVolume,         // 投信-賣權買方未平倉口數,
+      sitcPutsLongOiValue,          // 投信-賣權買方未平倉契約金額(千元)
+      sitcPutsShortOiVolume,        // 投信-賣權賣方未平倉口數
+      sitcPutsShortOiValue,         // 投信-賣權賣方未平倉契約金額(千元)
+      sitcPutsNetOiVolume,          // 投信-賣權未平倉口數買賣淨額
+      sitcPutsNetOiValue,           // 投信-賣權未平倉契約金額買賣淨額(千元)
+      finiPutsLongTradeVolume,      // 外資-賣權買方交易口數
+      finiPutsLongTradeValue,       // 外資-賣權買方交易契約金額(千元)
+      finiPutsShortTradeVolume,     // 外資-賣權賣方交易口數
+      finiPutsShortTradeValue,      // 外資-賣權賣方交易契約金額(千元)
+      finiPutsNetTradeVolume,       // 外資-賣權交易口數買賣淨額
+      finiPutsNetTradeValue,        // 外資-賣權交易契約金額買賣淨額(千元)
+      finiPutsLongOiVolume,         // 外資-賣權買方未平倉口數,
+      finiPutsLongOiValue,          // 外資-賣權買方未平倉契約金額(千元)
+      finiPutsShortOiVolume,        // 外資-賣權賣方未平倉口數
+      finiPutsShortOiValue,         // 外資-賣權賣方未平倉契約金額(千元)
+      finiPutsNetOiVolume,          // 外資-賣權未平倉口數買賣淨額
+      finiPutsNetOiValue,           // 外資-賣權未平倉契約金額買賣淨額(千元)
+    ] = raw;
+
+    return {
+      date,
+      finiCallsLongTradeVolume,
+      finiCallsLongTradeValue,
+      finiCallsShortTradeVolume,
+      finiCallsShortTradeValue,
+      finiCallsNetTradeVolume,
+      finiCallsNetTradeValue,
+      finiCallsLongOiVolume,
+      finiCallsLongOiValue,
+      finiCallsShortOiVolume,
+      finiCallsShortOiValue,
+      finiCallsNetOiVolume,
+      finiCallsNetOiValue,
+      finiPutsLongTradeVolume,
+      finiPutsLongTradeValue,
+      finiPutsShortTradeVolume,
+      finiPutsShortTradeValue,
+      finiPutsNetTradeVolume,
+      finiPutsNetTradeValue,
+      finiPutsLongOiVolume,
+      finiPutsLongOiValue,
+      finiPutsShortOiVolume,
+      finiPutsShortOiValue,
+      finiPutsNetOiVolume,
+      finiPutsNetOiValue,
+      sitcCallsLongTradeVolume,
+      sitcCallsLongTradeValue,
+      sitcCallsShortTradeVolume,
+      sitcCallsShortTradeValue,
+      sitcCallsNetTradeVolume,
+      sitcCallsNetTradeValue,
+      sitcCallsLongOiVolume,
+      sitcCallsLongOiValue,
+      sitcCallsShortOiVolume,
+      sitcCallsShortOiValue,
+      sitcCallsNetOiVolume,
+      sitcCallsNetOiValue,
+      sitcPutsLongTradeVolume,
+      sitcPutsLongTradeValue,
+      sitcPutsShortTradeVolume,
+      sitcPutsShortTradeValue,
+      sitcPutsNetTradeVolume,
+      sitcPutsNetTradeValue,
+      sitcPutsLongOiVolume,
+      sitcPutsLongOiValue,
+      sitcPutsShortOiVolume,
+      sitcPutsShortOiValue,
+      sitcPutsNetOiVolume,
+      sitcPutsNetOiValue,
+      dealersCallsLongTradeVolume,
+      dealersCallsLongTradeValue,
+      dealersCallsShortTradeVolume,
+      dealersCallsShortTradeValue,
+      dealersCallsNetTradeVolume,
+      dealersCallsNetTradeValue,
+      dealersCallsLongOiVolume,
+      dealersCallsLongOiValue,
+      dealersCallsShortOiVolume,
+      dealersCallsShortOiValue,
+      dealersCallsNetOiVolume,
+      dealersCallsNetOiValue,
+      dealersPutsLongTradeVolume,
+      dealersPutsLongTradeValue,
+      dealersPutsShortTradeVolume,
+      dealersPutsShortTradeValue,
+      dealersPutsNetTradeVolume,
+      dealersPutsNetTradeValue,
+      dealersPutsLongOiVolume,
+      dealersPutsLongOiValue,
+      dealersPutsShortOiVolume,
+      dealersPutsShortOiValue,
+      dealersPutsNetOiVolume,
+      dealersPutsNetOiValue,
+    };
+  }
 }
