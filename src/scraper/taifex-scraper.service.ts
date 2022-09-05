@@ -8,7 +8,7 @@ import { firstValueFrom } from 'rxjs';
 
 @Injectable()
 export class TaifexScraperService {
-  constructor(private httpService: HttpService) {}
+  constructor(private httpService: HttpService) { }
 
   async fetchInstInvestorsTxfTrades(date: string) {
     // 將 `date` 轉換成 `yyyy/MM/dd` 格式
@@ -27,11 +27,11 @@ export class TaifexScraperService {
       .then(response => csvtojson({ noheader: true, output: 'csv' }).fromString(iconv.decode(response.data, 'big5')));
 
     // 若該日期非交易日或尚無資料則回傳 null
-    const [ fields, dealers, sitc, fini ] = responseData;
+    const [fields, dealers, sitc, fini] = responseData;
     if (fields[0] !== '日期') return null;
 
     // 合併三大法人交易數據並將 string 型別數字轉換成 number
-    const raw = [ ...dealers.slice(3), ...sitc.slice(3), ...fini.slice(3) ]
+    const raw = [...dealers.slice(3), ...sitc.slice(3), ...fini.slice(3)]
       .map(data => numeral(data).value());
 
     const [
@@ -131,7 +131,7 @@ export class TaifexScraperService {
       .then(response => csvtojson({ noheader: true, output: 'csv' }).fromString(iconv.decode(response.data, 'big5')));
 
     // 若該日期非交易日或尚無資料則回傳 null
-    const [ fields, dealersCalls, sitcCalls, finiCalls, dealersPuts, sitcPuts, finiPuts ] = responseData;
+    const [fields, dealersCalls, sitcCalls, finiCalls, dealersPuts, sitcPuts, finiPuts] = responseData;
     if (fields[0] !== '日期') return null;
 
     // 合併三大法人交易數據並將 string 型別數字轉換成 number
@@ -312,7 +312,7 @@ export class TaifexScraperService {
       .then(response => csvtojson({ noheader: true, output: 'csv' }).fromString(iconv.decode(response.data, 'big5')));
 
     // 若該日期非交易日或尚無資料則回傳 null
-    const [ fields, row ] = responseData;
+    const [fields, row] = responseData;
     if (!row) return null;
 
     // 將 string 型別數字轉換成 number
@@ -339,6 +339,156 @@ export class TaifexScraperService {
       txoPutOi,
       txoCallOi,
       txoPutCallRatio,
+    };
+  }
+
+  async fetchLargeTradersTxfPosition(date: string) {
+    // 將 `date` 轉換成 `yyyy/MM/dd` 格式
+    const queryDate = DateTime.fromISO(date).toFormat('yyyy/MM/dd');
+
+    // 建立 FormData
+    const form = new URLSearchParams({
+      queryStartDate: queryDate,  // 日期(起)
+      queryEndDate: queryDate,    // 日期(迄)
+    });
+    const url = 'https://www.taifex.com.tw/cht/3/largeTraderFutDown';
+
+    // 取得回應資料並將 CSV 轉換成 JSON 格式及正確編碼
+    const responseData = await firstValueFrom(this.httpService.post(url, form, { responseType: 'arraybuffer' }))
+      .then(response => csvtojson({ noheader: true, output: 'csv' }).fromString(iconv.decode(response.data, 'big5')));
+
+    // 若該日期非交易日或尚無資料則回傳 null
+    const [fields, ...rows] = responseData;
+    if (fields[0] !== '日期') return null;
+
+    const txRows = rows.filter(row => row[1] === 'TX'); // 只取臺股期貨數據
+    const [
+      weekRow,                 // 臺股期貨週契約-大額交易人
+      weekSpecificRow,         // 臺股期貨週契約-特定法人
+      frontMonthRow,           // 臺股期貨近月契約-大額交易人
+      frontMonthSpecificRow,   // 臺股期貨近月契約-特定法人
+      allMonthsRow,            // 臺股期貨所有契約-大額交易人
+      allMonthsSpecificRow,    // 臺股期貨所有契約-特定法人
+    ] = txRows;
+
+    // 將 string 型別數字轉換成 number 並計算出非特定人及遠月契約
+    const frontMonth = frontMonthRow.slice(5, -1).map(data => numeral(data).value());
+    const frontMonthSpecific = frontMonthSpecificRow.slice(5, -1).map(data => numeral(data).value());
+    const frontMonthNonSpecific = frontMonth.map((data, i) => data - frontMonthSpecific[i]);
+    const allMonths = allMonthsRow.slice(5, -1).map(data => numeral(data).value());
+    const allMonthsSpecific = allMonthsSpecificRow.slice(5, -1).map(data => numeral(data).value());
+    const allMonthsNonSpecific = allMonths.map((data, i) => data - allMonthsSpecific[i]);
+    const backMonths = allMonths.map((data, i) => data - frontMonth[i]);
+    const backMonthsSpecific = allMonthsSpecific.map((data, i) => data - frontMonthSpecific[i]);
+    const backMonthsNonSpecific = backMonths.map((data, i) => data - backMonthsSpecific[i]);
+    const frontMonthMarketOi = numeral(frontMonthRow.slice(-1)).value();
+    const allMonthsMarketOi = numeral(allMonthsRow.slice(-1)).value();
+    const backMonthsMarketOi = allMonthsMarketOi - frontMonthMarketOi;
+
+    // 合併所有數據
+    const raw = [
+      ...frontMonth,
+      ...frontMonthSpecific,
+      ...frontMonthNonSpecific,
+      ...allMonths,
+      ...allMonthsSpecific,
+      ...allMonthsNonSpecific,
+      ...backMonths,
+      ...backMonthsSpecific,
+      ...backMonthsNonSpecific,
+    ];
+
+    const [
+      top5FrontMonthLongOi,               // 前五大交易人-近月契約買方
+      top5FrontMonthShortOi,              // 前五大交易人-近月契約賣方
+      top10FrontMonthLongOi,              // 前十大交易人-近月契約買方
+      top10FrontMonthShortOi,             // 前十大交易人-近月契約賣方
+      top5SpecificFrontMonthLongOi,       // 前五大特定法人-近月契約買方
+      top5SpecificFrontMonthShortOi,      // 前五大特定法人-近月契約賣方
+      top10SpecificFrontMonthLongOi,      // 前十大特定法人-近月契約買方
+      top10SpecificFrontMonthShortOi,     // 前十大特定法人-近月契約賣方
+      top5NonSpecificFrontMonthLongOi,    // 前五大非特定法人-近月契約買方
+      top5NonSpecificFrontMonthShortOi,   // 前五大非特定法人-近月契約賣方
+      top10NonSpecificFrontMonthLongOi,   // 前十大非特定法人-近月契約買方
+      top10NonSpecificFrontMonthShortOi,  // 前十大非特定法人-近月契約賣方
+      top5AllMonthsLongOi,                // 前五大交易人-全部契約買方
+      top5AllMonthsShortOi,               // 前五大交易人-全部契約賣方
+      top10AllMonthsLongOi,               // 前十大交易人-全部契約買方
+      top10AllMonthsShortOi,              // 前十大交易人-全部契約賣方
+      top5SpecificAllMonthsLongOi,        // 前五大特定法人-全部契約買方
+      top5specificAllMonthsShortOi,       // 前五大特定法人-全部契約賣方
+      top10SpecificAllMonthsLongOi,       // 前十大特定法人-全部契約買方
+      top10SpecificAllMonthsShortOi,      // 前十大特定法人-全部契約賣方
+      top5NonSpecificAllMonthsLongOi,     // 全部契約 前五大非特定法人買方
+      top5NonSpecificAllMonthsShortOi,    // 全部契約 前五大非特定法人賣方
+      top10NonSpecificAllMonthsLongOi,    // 全部契約 前十大非特定法人買方
+      top10NonSpecificAllMonthsShortOi,   // 全部契約 前十大非特定法人賣方
+      top5BackMonthsLongOi,               // 前五大交易人-遠月契約買方
+      top5BackMonthsShortOi,              // 前五大交易人-遠月契約賣方
+      top10BackMonthsLongOi,              // 前十大交易人-遠月契約買方
+      top10BackMonthsShortOi,             // 前十大交易人-遠月契約賣方
+      top5SpecificBackMonthsLongOi,       // 前五大特定法人-遠月契約買方
+      top5SpecificBackMonthsShortOi,      // 前五大特定法人-遠月契約賣方
+      top10SpecificBackMonthsLongOi,      // 前十大特定法人-遠月契約買方
+      top10SpecificBackMonthsShortOi,     // 前十大特定法人-遠月契約賣方
+      top5NonSpecificBackMonthsLongOi,    // 前五大特定法人-遠月契約買方
+      top5NonSpecificBackMonthsShortOi,   // 前五大特定法人-遠月契約賣方
+      top10NonSpecificBackMonthsLongOi,   // 前十大特定法人-遠月契約買方
+      top10NonSpecificBackMonthsShortOi,  // 前十大特定法人-遠月契約賣方
+    ] = raw;
+
+    // 計算近月契約大額交易人淨部位
+    const top5FrontMonthNetOi = top5FrontMonthLongOi - top5FrontMonthShortOi;
+    const top10FrontMonthNetOi = top10FrontMonthLongOi - top10FrontMonthShortOi;
+    const top5SpecificFrontMonthNetOi = top5SpecificFrontMonthLongOi - top5SpecificFrontMonthShortOi;
+    const top10SpecificFrontMonthNetOi = top10SpecificFrontMonthLongOi - top10SpecificFrontMonthShortOi;
+    const top5NonSpecificFrontMonthNetOi = top5NonSpecificFrontMonthLongOi - top5NonSpecificFrontMonthShortOi;
+    const top10NonSpecificFrontMonthNetOi = top10NonSpecificFrontMonthLongOi - top10NonSpecificFrontMonthShortOi;
+
+    // 計算全部契約大額交易人淨部位
+    const top5AllMonthsNetOi = top5AllMonthsLongOi - top5AllMonthsShortOi;
+    const top10AllMonthsNetOi = top10AllMonthsLongOi - top10AllMonthsShortOi;
+    const top5SpecificAllMonthsNetOi = top5SpecificAllMonthsLongOi - top5specificAllMonthsShortOi;
+    const top10SpecificAllMonthsNetOi = top10SpecificAllMonthsLongOi - top10SpecificAllMonthsShortOi;
+    const top5NonSpecificAllMonthsNetOi = top5NonSpecificAllMonthsLongOi - top5NonSpecificAllMonthsShortOi;
+    const top10NonSpecificAllMonthsNetOi = top10NonSpecificAllMonthsLongOi - top10NonSpecificAllMonthsShortOi;
+
+    // 計算遠月契約大額交易人淨部位
+    const top5BackMonthsNetOi = top5BackMonthsLongOi - top5BackMonthsShortOi;
+    const top10BackMonthsNetOi = top10BackMonthsLongOi - top10BackMonthsShortOi;
+    const top5SpecificBackMonthsNetOi = top5SpecificBackMonthsLongOi - top5SpecificBackMonthsShortOi;
+    const top10SpecificBackMonthsNetOi = top10SpecificBackMonthsLongOi - top10SpecificBackMonthsShortOi;
+    const top5NonSpecificBackMonthsNetOi = top5NonSpecificBackMonthsLongOi - top5NonSpecificBackMonthsShortOi;
+    const top10NonSpecificBackMonthsNetOi = top10NonSpecificBackMonthsLongOi - top10NonSpecificBackMonthsShortOi;
+
+    return {
+      date,
+      top5SpecificFrontMonthLongOi,
+      top5SpecificFrontMonthShortOi,
+      top5SpecificFrontMonthNetOi,
+      top5SpecificBackMonthsLongOi,
+      top5SpecificBackMonthsShortOi,
+      top5SpecificBackMonthsNetOi,
+      top5NonSpecificFrontMonthLongOi,
+      top5NonSpecificFrontMonthShortOi,
+      top5NonSpecificFrontMonthNetOi,
+      top5NonSpecificBackMonthsLongOi,
+      top5NonSpecificBackMonthsShortOi,
+      top5NonSpecificBackMonthsNetOi,
+      top10SpecificFrontMonthLongOi,
+      top10SpecificFrontMonthShortOi,
+      top10SpecificFrontMonthNetOi,
+      top10SpecificBackMonthsLongOi,
+      top10SpecificBackMonthsShortOi,
+      top10SpecificBackMonthsNetOi,
+      top10NonSpecificFrontMonthLongOi,
+      top10NonSpecificFrontMonthShortOi,
+      top10NonSpecificFrontMonthNetOi,
+      top10NonSpecificBackMonthsLongOi,
+      top10NonSpecificBackMonthsShortOi,
+      top10NonSpecificBackMonthsNetOi,
+      frontMonthMarketOi,
+      backMonthsMarketOi,
     };
   }
 }
