@@ -491,4 +491,267 @@ export class TaifexScraperService {
       backMonthsMarketOi,
     };
   }
+
+  async fetchLargeTradersTxoPosition(date: string) {
+    // 將 `date` 轉換成 `yyyy/MM/dd` 格式
+    const queryDate = DateTime.fromISO(date).toFormat('yyyy/MM/dd');
+
+    // 建立 FormData
+    const form = new URLSearchParams({
+      queryStartDate: queryDate,  // 日期(起)
+      queryEndDate: queryDate,    // 日期(迄)
+    });
+    const url = 'https://www.taifex.com.tw/cht/3/largeTraderOptDown';
+
+    // 取得回應資料並將 CSV 轉換成 JSON 格式及正確編碼
+    const responseData = await firstValueFrom(this.httpService.post(url, form, { responseType: 'arraybuffer' }))
+      .then(response => csvtojson({ noheader: true, output: 'csv' }).fromString(iconv.decode(response.data, 'big5')));
+
+    // 若該日期非交易日或尚無資料則回傳 null
+    const [fields, ...rows] = responseData;
+    if (fields[0] !== '日期') return null;
+
+    const txoRows = rows.filter(row => row[1] === 'TXO'); // 只取臺指選擇權數據
+    const [
+      txoCallWeekRow,                // 臺指選擇權買權週契約-大額交易人
+      txoCallWeekSpecificRow,        // 臺指選擇權買權週契約-特定法人
+      txoCallFrontMonthRow,          // 臺指選擇權買權近月契約-大額交易人
+      txoCallFrontMonthSpecificRow,  // 臺指選擇權買權近月契約-特定法人
+      txoCallAllMonthsRow,           // 臺指選擇權買權所有契約-大額交易人
+      txoCallAllMonthsSpecificRow,   // 臺指選擇權買權所有契約-特定法人
+      txoPutWeekRow,                 // 臺指選擇權賣權週契約-大額交易人
+      txoPutWeekSpecificRow,         // 臺指選擇權賣權週契約-特定法人
+      txoPutFrontMonthRow,           // 臺指選擇權賣權近月契約-大額交易人
+      txoPutFrontMonthSpecificRow,   // 臺指選擇權賣權近月契約-特定法人
+      txoPutAllMonthsRow,            // 臺指選擇權賣權所有契約-大額交易人
+      txoPutAllMonthsSpecificRow,    // 臺指選擇權賣權所有契約-特定法人
+    ] = txoRows;
+
+    // 將 string 型別數字轉換成 number 並計算出非特定人及遠月契約
+    const txoCallFrontMonth = txoCallFrontMonthRow.slice(6, -1).map(data => numeral(data).value());
+    const txoCallFrontMonthSpecific = txoCallFrontMonthSpecificRow.slice(6, -1).map(data => numeral(data).value());
+    const txoCallFrontMonthNonSpecific = txoCallFrontMonth.map((data, i) => data - txoCallFrontMonthSpecific[i]);
+    const txoCallAllMonths = txoCallAllMonthsRow.slice(6, -1).map(data => numeral(data).value());
+    const txoCallAllMonthsSpecific = txoCallAllMonthsSpecificRow.slice(6, -1).map(data => numeral(data).value());
+    const txoCallAllMonthsNonSpecific = txoCallAllMonths.map((data, i) => data - txoCallAllMonthsSpecific[i]);
+    const txoCallBackMonths = txoCallAllMonths.map((data, i) => data - txoCallFrontMonth[i]);
+    const txoCallBackMonthsSpecific = txoCallAllMonthsSpecific.map((data, i) => data - txoCallFrontMonthSpecific[i]);
+    const txoCallBackMonthsNonSpecific = txoCallBackMonths.map((data, i) => data - txoCallBackMonthsSpecific[i]);
+    const txoCallFrontMonthMarketOi = numeral(txoCallFrontMonthRow.slice(-1)).value();
+    const txoCallAllMonthsMarketOi = numeral(txoCallAllMonthsRow.slice(-1)).value();
+    const txoCallBackMonthsMarketOi = txoCallAllMonthsMarketOi - txoCallFrontMonthMarketOi;
+    const txoPutFrontMonth = txoPutFrontMonthRow.slice(6, -1).map(data => numeral(data).value());
+    const txoPutFrontMonthSpecific = txoPutFrontMonthSpecificRow.slice(6, -1).map(data => numeral(data).value());
+    const txoPutFrontMonthNonSpecific = txoPutFrontMonth.map((data, i) => data - txoPutFrontMonthSpecific[i]);
+    const txoPutAllMonths = txoPutAllMonthsRow.slice(6, -1).map(data => numeral(data).value());
+    const txoPutAllMonthsSpecific = txoPutAllMonthsSpecificRow.slice(6, -1).map(data => numeral(data).value());
+    const txoPutAllMonthsNonSpecific = txoPutAllMonths.map((data, i) => data - txoPutAllMonthsSpecific[i]);
+    const txoPutBackMonths = txoPutAllMonths.map((data, i) => data - txoPutFrontMonth[i]);
+    const txoPutBackMonthsSpecific = txoPutAllMonthsSpecific.map((data, i) => data - txoPutFrontMonthSpecific[i]);
+    const txoPutBackMonthsNonSpecific = txoPutBackMonths.map((data, i) => data - txoPutBackMonthsSpecific[i]);
+    const txoPutFrontMonthMarketOi = numeral(txoPutFrontMonthRow.slice(-1)).value();
+    const txoPutAllMonthsMarketOi = numeral(txoPutAllMonthsRow.slice(-1)).value();
+    const txoPutBackMonthsMarketOi = txoPutAllMonthsMarketOi - txoPutFrontMonthMarketOi;
+
+    // 合併所有數據
+    const raw = [
+      ...txoCallFrontMonth,
+      ...txoCallFrontMonthSpecific,
+      ...txoCallFrontMonthNonSpecific,
+      ...txoCallAllMonths,
+      ...txoCallAllMonthsSpecific,
+      ...txoCallAllMonthsNonSpecific,
+      ...txoCallBackMonths,
+      ...txoCallBackMonthsSpecific,
+      ...txoCallBackMonthsNonSpecific,
+      ...txoPutFrontMonth,
+      ...txoPutFrontMonthSpecific,
+      ...txoPutFrontMonthNonSpecific,
+      ...txoPutAllMonths,
+      ...txoPutAllMonthsSpecific,
+      ...txoPutAllMonthsNonSpecific,
+      ...txoPutBackMonths,
+      ...txoPutBackMonthsSpecific,
+      ...txoPutBackMonthsNonSpecific,
+    ];
+
+    const [
+      top5TxoCallFrontMonthLongOi,              // 前五大交易人-臺指買權近月契約買方
+      top5TxoCallFrontMonthShortOi,             // 前五大交易人-臺指買權近月契約賣方
+      top10TxoCallFrontMonthLongOi,             // 前十大交易人-臺指買權近月契約買方
+      top10TxoCallFrontMonthShortOi,            // 前十大交易人-臺指買權近月契約賣方
+      top5SpecificTxoCallFrontMonthLongOi,      // 前五大特定法人-臺指買權近月契約買方
+      top5SpecificTxoCallFrontMonthShortOi,     // 前五大特定法人-臺指買權近月契約賣方
+      top10SpecificTxoCallFrontMonthLongOi,     // 前十大特定法人-臺指買權近月契約買方
+      top10SpecificTxoCallFrontMonthShortOi,    // 前十大特定法人-臺指買權近月契約賣方
+      top5NonSpecificTxoCallFrontMonthLongOi,   // 前五大非特定法人-臺指買權近月契約買方
+      top5NonSpecificTxoCallFrontMonthShortOi,  // 前五大非特定法人-臺指買權近月契約賣方
+      top10NonSpecificTxoCallFrontMonthLongOi,  // 前十大非特定法人-臺指買權近月契約買方
+      top10NonSpecificTxoCallFrontMonthShortOi, // 前十大非特定法人-臺指買權近月契約賣方
+      top5TxoCallAllMonthsLongOi,               // 前五大交易人-臺指買權全部契約買方
+      top5TxoCallAllMonthsShortOi,              // 前五大交易人-臺指買權全部契約賣方
+      top10TxoCallAllMonthsLongOi,              // 前十大交易人-臺指買權全部契約買方
+      top10TxoCallAllMonthsShortOi,             // 前十大交易人-臺指買權全部契約賣方
+      top5SpecificTxoCallAllMonthsLongOi,       // 前五大特定法人-臺指買權全部契約買方
+      top5SpecificTxoCallAllMonthsShortOi,      // 前五大特定法人-臺指買權全部契約賣方
+      top10SpecificTxoCallAllMonthsLongOi,      // 前十大特定法人-臺指買權全部契約買方
+      top10SpecificTxoCallAllMonthsShortOi,     // 前十大特定法人-臺指買權全部契約賣方
+      top5NonSpecificTxoCallAllMonthsLongOi,    // 前五大非特定法人-臺指買權全部契約買方
+      top5NonSpecificTxoCallAllMonthsShortOi,   // 前五大非特定法人-臺指買權全部契約賣方
+      top10NonSpecificTxoCallAllMonthsLongOi,   // 前十大非特定法人-臺指買權全部契約買方
+      top10NonSpecificTxoCallAllMonthsShortOi,  // 前十大非特定法人-臺指買權全部契約賣方
+      top5TxoCallBackMonthsLongOi,              // 前五大交易人-臺指買權全部契約買方
+      top5TxoCallBackMonthsShortOi,             // 前五大交易人-臺指買權全部契約賣方
+      top10TxoCallBackMonthsLongOi,             // 前十大交易人-臺指買權全部契約買方
+      top10TxoCallBackMonthsShortOi,            // 前十大交易人-臺指買權全部契約賣方
+      top5SpecificTxoCallBackMonthsLongOi,      // 前五大特定法人-臺指買權全部契約買方
+      top5SpecificTxoCallBackMonthsShortOi,     // 前五大特定法人-臺指買權全部契約賣方
+      top10SpecificTxoCallBackMonthsLongOi,     // 前十大特定法人-臺指買權全部契約買方
+      top10SpecificTxoCallBackMonthsShortOi,    // 前十大特定法人-臺指買權全部契約賣方
+      top5NonSpecificTxoCallBackMonthsLongOi,   // 前五大非特定法人-臺指買權全部契約買方
+      top5NonSpecificTxoCallBackMonthsShortOi,  // 前五大非特定法人-臺指買權全部契約賣方
+      top10NonSpecificTxoCallBackMonthsLongOi,  // 前十大非特定法人-臺指買權全部契約買方
+      top10NonSpecificTxoCallBackMonthsShortOi, // 前十大非特定法人-臺指買權全部契約賣方
+      top5TxoPutFrontMonthLongOi,               // 前五大交易人-臺指賣權近月契約買方
+      top5TxoPutFrontMonthShortOi,              // 前五大交易人-臺指賣權近月契約賣方
+      top10TxoPutFrontMonthLongOi,              // 前十大交易人-臺指賣權近月契約買方
+      top10TxoPutFrontMonthShortOi,             // 前十大交易人-臺指賣權近月契約賣方
+      top5SpecificTxoPutFrontMonthLongOi,       // 前五大特定法人-臺指賣權近月契約買方
+      top5SpecificTxoPutFrontMonthShortOi,      // 前五大特定法人-臺指賣權近月契約賣方
+      top10SpecificTxoPutFrontMonthLongOi,      // 前十大特定法人-臺指賣權近月契約買方
+      top10SpecificTxoPutFrontMonthShortOi,     // 前十大特定法人-臺指賣權近月契約賣方
+      top5NonSpecificTxoPutFrontMonthLongOi,    // 前五大非特定法人-臺指賣權近月契約買方
+      top5NonSpecificTxoPutFrontMonthShortOi,   // 前五大非特定法人-臺指賣權近月契約賣方
+      top10NonSpecificTxoPutFrontMonthLongOi,   // 前十大非特定法人-臺指賣權近月契約買方
+      top10NonSpecificTxoPutFrontMonthShortOi,  // 前十大非特定法人-臺指賣權近月契約賣方
+      top5TxoPutAllMonthsLongOi,                // 前五大交易人-臺指賣權全部契約買方
+      top5TxoPutAllMonthsShortOi,               // 前五大交易人-臺指賣權全部契約賣方
+      top10TxoPutAllMonthsLongOi,               // 前十大交易人-臺指賣權全部契約買方
+      top10TxoPutAllMonthsShortOi,              // 前十大交易人-臺指賣權全部契約賣方
+      top5SpecificTxoPutAllMonthsLongOi,        // 前五大特定法人-臺指賣權全部契約買方
+      top5SpecificTxoPutAllMonthsShortOi,       // 前五大特定法人-臺指賣權全部契約賣方
+      top10SpecificTxoPutAllMonthsLongOi,       // 前十大特定法人-臺指賣權全部契約買方
+      top10SpecificTxoPutAllMonthsShortOi,      // 前十大特定法人-臺指賣權全部契約賣方
+      top5NonSpecificTxoPutAllMonthsLongOi,     // 前五大非特定法人-臺指賣權全部契約買方
+      top5NonSpecificTxoPutAllMonthsShortOi,    // 前五大非特定法人-臺指賣權全部契約賣方
+      top10NonSpecificTxoPutAllMonthsLongOi,    // 前十大非特定法人-臺指賣權全部契約買方
+      top10NonSpecificTxoPutAllMonthsShortOi,   // 前十大非特定法人-臺指賣權全部契約賣方
+      top5TxoPutBackMonthsLongOi,               // 前五大交易人-臺指買權遠月契約買方
+      top5TxoPutBackMonthsShortOi,              // 前五大交易人-臺指買權遠月契約賣方
+      top10TxoPutBackMonthsLongOi,              // 前十大交易人-臺指買權遠月契約買方
+      top10TxoPutBackMonthsShortOi,             // 前十大交易人-臺指買權遠月契約賣方
+      top5SpecificTxoPutBackMonthsLongOi,       // 前五大特定法人-臺指買權遠月契約買方
+      top5SpecificTxoPutBackMonthsShortOi,      // 前五大特定法人-臺指買權遠月契約賣方
+      top10SpecificTxoPutBackMonthsLongOi,      // 前十大特定法人-臺指買權遠月契約買方
+      top10SpecificTxoPutBackMonthsShortOi,     // 前十大特定法人-臺指買權遠月契約賣方
+      top5NonSpecificTxoPutBackMonthsLongOi,    // 前五大非特定法人-臺指買權遠月契約買方
+      top5NonSpecificTxoPutBackMonthsShortOi,   // 前五大非特定法人-臺指買權遠月契約賣方
+      top10NonSpecificTxoPutBackMonthsLongOi,   // 前十大非特定法人-臺指買權遠月契約買方
+      top10NonSpecificTxoPutBackMonthsShortOi,  // 前十大非特定法人-臺指買權遠月契約賣方
+    ] = raw;
+
+    // 計算臺指買權近月契約大額交易人淨部位
+    const top5TxoCallFrontMonthNetOi = top5TxoCallFrontMonthLongOi - top5TxoCallFrontMonthShortOi;
+    const top10TxoCallFrontMonthNetOi = top10TxoCallFrontMonthLongOi - top10TxoCallFrontMonthShortOi;
+    const top5SpecificTxoCallFrontMonthNetOi = top5SpecificTxoCallFrontMonthLongOi - top5SpecificTxoCallFrontMonthShortOi;
+    const top10SpecificTxoCallFrontMonthNetOi = top10SpecificTxoCallFrontMonthLongOi - top10SpecificTxoCallFrontMonthShortOi;
+    const top5NonSpecificTxoCallFrontMonthNetOi = top5NonSpecificTxoCallFrontMonthLongOi - top5NonSpecificTxoCallFrontMonthShortOi;
+    const top10NonSpecificTxoCallFrontMonthNetOi = top10NonSpecificTxoCallFrontMonthLongOi - top10NonSpecificTxoCallFrontMonthShortOi;
+
+    // 計算臺指買權全部契約大額交易人淨部位
+    const top5TxoCallAllMonthsNetOi = top5TxoCallAllMonthsLongOi - top5TxoCallAllMonthsShortOi;
+    const top10TxoCallAllMonthsNetOi = top10TxoCallAllMonthsLongOi - top10TxoCallAllMonthsShortOi;
+    const top5SpecificTxoCallAllMonthsNetOi = top5SpecificTxoCallAllMonthsLongOi - top5SpecificTxoCallAllMonthsShortOi;
+    const top10SpecificTxoCallAllMonthsNetOi = top10SpecificTxoCallAllMonthsLongOi - top10SpecificTxoCallAllMonthsShortOi;
+    const top5NonSpecificTxoCallAllMonthsNetOi = top5NonSpecificTxoCallAllMonthsLongOi - top5NonSpecificTxoCallAllMonthsShortOi;
+    const top10NonSpecificTxoCallAllMonthsNetOi = top10NonSpecificTxoCallAllMonthsLongOi - top10NonSpecificTxoCallAllMonthsShortOi;
+
+    // 計算臺指買權遠月契約大額交易人淨部位
+    const top5TxoCallBackMonthsNetOi = top5TxoCallBackMonthsLongOi - top5TxoCallBackMonthsShortOi;
+    const top10TxoCallBackMonthsNetOi = top10TxoCallBackMonthsLongOi - top10TxoCallBackMonthsShortOi;
+    const top5SpecificTxoCallBackMonthsNetOi = top5SpecificTxoCallBackMonthsLongOi - top5SpecificTxoCallBackMonthsShortOi;
+    const top10SpecificTxoCallBackMonthsNetOi = top10SpecificTxoCallBackMonthsLongOi - top10SpecificTxoCallBackMonthsShortOi;
+    const top5NonSpecificTxoCallBackMonthsNetOi = top5NonSpecificTxoCallBackMonthsLongOi - top5NonSpecificTxoCallBackMonthsShortOi;
+    const top10NonSpecificTxoCallBackMonthsNetOi = top10NonSpecificTxoCallBackMonthsLongOi - top10NonSpecificTxoCallBackMonthsShortOi;
+
+    // 計算臺指賣權近月契約大額交易人淨部位
+    const top5TxoPutFrontMonthNetOi = top5TxoPutFrontMonthLongOi - top5TxoPutFrontMonthShortOi;
+    const top10TxoPutFrontMonthNetOi = top10TxoPutFrontMonthLongOi - top10TxoPutFrontMonthShortOi;
+    const top5SpecificTxoPutFrontMonthNetOi = top5SpecificTxoPutFrontMonthLongOi - top5SpecificTxoPutFrontMonthShortOi;
+    const top10SpecificTxoPutFrontMonthNetOi = top10SpecificTxoPutFrontMonthLongOi - top10SpecificTxoPutFrontMonthShortOi;
+    const top5NonSpecificTxoPutFrontMonthNetOi = top5NonSpecificTxoPutFrontMonthLongOi - top5NonSpecificTxoPutFrontMonthShortOi;
+    const top10NonSpecificTxoPutFrontMonthNetOi = top10NonSpecificTxoPutFrontMonthLongOi - top10NonSpecificTxoPutFrontMonthShortOi;
+
+    // 計算臺指賣權全部契約大額交易人淨部位
+    const top5TxoPutAllMonthsNetOi = top5TxoPutAllMonthsLongOi - top5TxoPutAllMonthsShortOi;
+    const top10TxoPutAllMonthsNetOi = top10TxoPutAllMonthsLongOi - top10TxoPutAllMonthsShortOi;
+    const top5SpecificTxoPutAllMonthsNetOi = top5SpecificTxoPutAllMonthsLongOi - top5SpecificTxoPutAllMonthsShortOi;
+    const top10SpecificTxoPutAllMonthsNetOi = top10SpecificTxoPutAllMonthsLongOi - top10SpecificTxoPutAllMonthsShortOi;
+    const top5NonSpecificTxoPutAllMonthsNetOi = top5NonSpecificTxoPutAllMonthsLongOi - top5NonSpecificTxoPutAllMonthsShortOi;
+    const top10NonSpecificTxoPutAllMonthsNetOi = top10NonSpecificTxoPutAllMonthsLongOi - top10NonSpecificTxoPutAllMonthsShortOi;
+
+    // 計算臺指賣權遠月契約大額交易人淨部位
+    const top5TxoPutBackMonthsNetOi = top5TxoPutBackMonthsLongOi - top5TxoPutBackMonthsShortOi;
+    const top10TxoPutBackMonthsNetOi = top10TxoPutBackMonthsLongOi - top10TxoPutBackMonthsShortOi;
+    const top5SpecificTxoPutBackMonthsNetOi = top5SpecificTxoPutBackMonthsLongOi - top5SpecificTxoPutBackMonthsShortOi;
+    const top10SpecificTxoPutBackMonthsNetOi = top10SpecificTxoPutBackMonthsLongOi - top10SpecificTxoPutBackMonthsShortOi;
+    const top5NonSpecificTxoPutBackMonthsNetOi = top5NonSpecificTxoPutBackMonthsLongOi - top5NonSpecificTxoPutBackMonthsShortOi;
+    const top10NonSpecificTxoPutBackMonthsNetOi = top10NonSpecificTxoPutBackMonthsLongOi - top10NonSpecificTxoPutBackMonthsShortOi;
+
+    return {
+      date,
+      top5SpecificTxoCallFrontMonthLongOi,
+      top5SpecificTxoCallFrontMonthShortOi,
+      top5SpecificTxoCallFrontMonthNetOi,
+      top5SpecificTxoCallBackMonthsLongOi,
+      top5SpecificTxoCallBackMonthsShortOi,
+      top5SpecificTxoCallBackMonthsNetOi,
+      top5NonSpecificTxoCallFrontMonthLongOi,
+      top5NonSpecificTxoCallFrontMonthShortOi,
+      top5NonSpecificTxoCallFrontMonthNetOi,
+      top5NonSpecificTxoCallBackMonthsLongOi,
+      top5NonSpecificTxoCallBackMonthsShortOi,
+      top5NonSpecificTxoCallBackMonthsNetOi,
+      top10SpecificTxoCallFrontMonthLongOi,
+      top10SpecificTxoCallFrontMonthShortOi,
+      top10SpecificTxoCallFrontMonthNetOi,
+      top10SpecificTxoCallBackMonthsLongOi,
+      top10SpecificTxoCallBackMonthsShortOi,
+      top10SpecificTxoCallBackMonthsNetOi,
+      top10NonSpecificTxoCallFrontMonthLongOi,
+      top10NonSpecificTxoCallFrontMonthShortOi,
+      top10NonSpecificTxoCallFrontMonthNetOi,
+      top10NonSpecificTxoCallBackMonthsLongOi,
+      top10NonSpecificTxoCallBackMonthsShortOi,
+      top10NonSpecificTxoCallBackMonthsNetOi,
+      top5SpecificTxoPutFrontMonthLongOi,
+      top5SpecificTxoPutFrontMonthShortOi,
+      top5SpecificTxoPutFrontMonthNetOi,
+      top5SpecificTxoPutBackMonthsLongOi,
+      top5SpecificTxoPutBackMonthsShortOi,
+      top5SpecificTxoPutBackMonthsNetOi,
+      top5NonSpecificTxoPutFrontMonthLongOi,
+      top5NonSpecificTxoPutFrontMonthShortOi,
+      top5NonSpecificTxoPutFrontMonthNetOi,
+      top5NonSpecificTxoPutBackMonthsLongOi,
+      top5NonSpecificTxoPutBackMonthsShortOi,
+      top5NonSpecificTxoPutBackMonthsNetOi,
+      top10SpecificTxoPutFrontMonthLongOi,
+      top10SpecificTxoPutFrontMonthShortOi,
+      top10SpecificTxoPutFrontMonthNetOi,
+      top10SpecificTxoPutBackMonthsLongOi,
+      top10SpecificTxoPutBackMonthsShortOi,
+      top10SpecificTxoPutBackMonthsNetOi,
+      top10NonSpecificTxoPutFrontMonthLongOi,
+      top10NonSpecificTxoPutFrontMonthShortOi,
+      top10NonSpecificTxoPutFrontMonthNetOi,
+      top10NonSpecificTxoPutBackMonthsLongOi,
+      top10NonSpecificTxoPutBackMonthsShortOi,
+      top10NonSpecificTxoPutBackMonthsNetOi,
+      txoCallFrontMonthMarketOi,
+      txoCallBackMonthsMarketOi,
+      txoPutFrontMonthMarketOi,
+      txoPutBackMonthsMarketOi,
+    };
+  }
 }
