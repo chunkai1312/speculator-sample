@@ -295,4 +295,50 @@ export class TaifexScraperService {
       dealersPutsNetOiValue,
     };
   }
+
+  async fetchTxoPutCallRatio(date: string) {
+    // 將 `date` 轉換成 `yyyy/MM/dd` 格式
+    const queryDate = DateTime.fromISO(date).toFormat('yyyy/MM/dd');
+
+    // 建立 FormData
+    const form = new URLSearchParams({
+      queryStartDate: queryDate,  // 日期(起)
+      queryEndDate: queryDate,    // 日期(迄)
+    });
+    const url = 'https://www.taifex.com.tw/cht/3/pcRatioDown';
+
+    // 取得回應資料並將 CSV 轉換成 JSON 格式及正確編碼
+    const responseData = await firstValueFrom(this.httpService.post(url, form, { responseType: 'arraybuffer' }))
+      .then(response => csvtojson({ noheader: true, output: 'csv' }).fromString(iconv.decode(response.data, 'big5')));
+
+    // 若該日期非交易日或尚無資料則回傳 null
+    const [ fields, row ] = responseData;
+    if (!row) return null;
+
+    // 將 string 型別數字轉換成 number
+    const raw = row.slice(1).map(data => numeral(data).value());
+
+    const [
+      txoPutVolume,                   // 賣權成交量
+      txoCallVolume,                  // 買權成交量
+      txoPutCallVolumeRatioPercent,   // 買賣權成交量比率%
+      txoPutOi,                       // 賣權未平倉量
+      txoCallOi,                      // 買權未平倉量
+      txoPutCallRatioPercent,         // 買賣權未平倉量比率%
+    ] = raw;
+
+    // 轉換為比率
+    const txoPutCallVolumeRatio = numeral(txoPutCallVolumeRatioPercent).divide(100).value();
+    const txoPutCallRatio = numeral(txoPutCallRatioPercent).divide(100).value();
+
+    return {
+      date,
+      txoPutVolume,
+      txoCallVolume,
+      txoPutCallVolumeRatio,
+      txoPutOi,
+      txoCallOi,
+      txoPutCallRatio,
+    };
+  }
 }
