@@ -754,4 +754,143 @@ export class TaifexScraperService {
       txoPutBackMonthsMarketOi,
     };
   }
+
+  async fetchRetailMxfPosition(date: string) {
+    // 取得全市場及三大法人小型臺指未平倉口數
+    const [ fetchedMxfMarketOi, fetchedInstInvestorsMxfOi ] = await Promise.all([
+      this.fetchMxfMarketOi(date),
+      this.fetchInstInvestorsMxfOi(date),
+    ]);
+
+    // 若該日期非交易日或尚無資料則回傳 null
+    if (!fetchedMxfMarketOi || !fetchedInstInvestorsMxfOi) return null;
+
+    const { mxfMarketOi } = fetchedMxfMarketOi;
+    const { instInvestorsMxfLongOi, instInvestorsMxfShortOi } = fetchedInstInvestorsMxfOi;
+
+    // 計算散戶小型臺指多方未平倉口數
+    const retailMxfLongOi = mxfMarketOi - instInvestorsMxfLongOi;
+
+    // 計算散戶小型臺指空方未平倉口數
+    const retailMxfShortOi = mxfMarketOi - instInvestorsMxfShortOi;
+
+    // 散戶小型臺指淨未平倉口數
+    const retailMxfNetOi = retailMxfLongOi - retailMxfShortOi;
+
+    // 計算散戶小台多空比
+    const retailMxfLongShortRatio = Math.round(retailMxfNetOi / mxfMarketOi * 10000) / 10000;
+
+    return {
+      date,
+      retailMxfLongOi,
+      retailMxfShortOi,
+      retailMxfNetOi,
+      retailMxfLongShortRatio,
+    };
+  }
+
+  private async fetchMxfMarketOi(date: string) {
+    // 將 `date` 轉換成 `yyyy/MM/dd` 格式
+    const queryDate = DateTime.fromISO(date).toFormat('yyyy/MM/dd');
+
+    // 建立 FormData
+    const form = new URLSearchParams({
+      down_type: '1',             // 每日行情下載
+      queryStartDate: queryDate,  // 日期(起)
+      queryEndDate: queryDate,    // 日期(迄)
+      commodity_id: 'MTX',        // 小型臺指(MTX)
+    });
+    const url = 'https://www.taifex.com.tw/cht/3/futDataDown';
+
+    // 取得回應資料並將 CSV 轉換成 JSON 格式及正確編碼
+    const responseData = await firstValueFrom(this.httpService.post(url, form, { responseType: 'arraybuffer' }))
+      .then(response => csvtojson({ noheader: true, output: 'csv' }).fromString(iconv.decode(response.data, 'big5')));
+
+    // 若該日期非交易日或尚無資料則回傳 null
+    const [fields, ...rows] = responseData;
+    if (fields[0] !== '交易日期') return null;
+
+    // 計算小型臺指全市場未平倉口數, 僅取日盤並排除到期契約以及價差合約
+    const mxfMarketOi = rows
+      .filter(row => row[17] === '一般' && row[10] !== '0' && !row[18])
+      .reduce((oi, row) => oi + numeral(row[11]).value(), 0);
+
+    return { date, mxfMarketOi };
+  }
+
+  private async fetchInstInvestorsMxfOi(date: string) {
+    // 將 `date` 轉換成 `yyyy/MM/dd` 格式
+    const queryDate = DateTime.fromISO(date).toFormat('yyyy/MM/dd');
+
+    // 建立 FormData
+    const form = new URLSearchParams({
+      queryStartDate: queryDate,  // 日期(起)
+      queryEndDate: queryDate,    // 日期(迄)
+      commodityId: 'MXF',         // 契約-小型臺指
+    });
+    const url = 'https://www.taifex.com.tw/cht/3/futContractsDateDown';
+
+    // 取得回應資料並將 CSV 轉換成 JSON 格式及正確編碼
+    const responseData = await firstValueFrom(this.httpService.post(url, form, { responseType: 'arraybuffer' }))
+      .then(response => csvtojson({ noheader: true, output: 'csv' }).fromString(iconv.decode(response.data, 'big5')));
+
+    // 若該日期非交易日或尚無資料則回傳 null
+    const [fields, dealers, sitc, fini] = responseData;
+    if (fields[0] !== '日期') return null;
+
+    // 合併三大法人交易數據並將 string 型別數字轉換成 number
+    const raw = [...dealers.slice(3), ...sitc.slice(3), ...fini.slice(3)]
+      .map(data => numeral(data).value());
+
+    const [
+      dealersLongTradeVolume,   // 自營商-多方交易口數
+      dealersLongTradeValue,    // 自營商-多方交易契約金額(千元)
+      dealersShortTradeVolume,  // 自營商-空方交易口數
+      dealersShortTradeValue,   // 自營商-空方交易契約金額(千元)
+      dealersNetTradeVolume,    // 自營商-多空交易口數淨額
+      dealersNetTradeValue,     // 自營商-多空交易契約金額淨額(千元)
+      dealersLongOiVolume,      // 自營商-多方未平倉口數
+      dealersLongOiValue,       // 自營商-多方未平倉契約金額(千元)
+      dealersShortOiVolume,     // 自營商-空方未平倉口數
+      dealersShortOiValue,      // 自營商-空方未平倉契約金額(千元)
+      dealersNetOiVolume,       // 自營商-多空未平倉口數淨額
+      dealersNetOiValue,        // 自營商-多空未平倉契約金額淨額(千元)
+      sitcLongTradeVolume,      // 投信-多方交易口數
+      sitcLongTradeValue,       // 投信-多方交易契約金額(千元)
+      sitcShortTradeVolume,     // 投信-空方交易口數
+      sitcShortTradeValue,      // 投信-空方交易契約金額(千元)
+      sitcNetTradeVolume,       // 投信-多空交易口數淨額
+      sitcNetTradeValue,        // 投信-多空交易契約金額淨額(千元)
+      sitcLongOiVolume,         // 投信-多方未平倉口數
+      sitcLongOiValue,          // 投信-多方未平倉契約金額(千元)
+      sitcShortOiVolume,        // 投信-空方未平倉口數
+      sitcShortOiValue,         // 投信-空方未平倉契約金額(千元)
+      sitcNetOiVolume,          // 投信-多空未平倉口數淨額
+      sitcNetOiValue,           // 投信-多空未平倉契約金額淨額(千元)
+      finiLongTradeVolume,      // 外資-多方交易口數
+      finiLongTradeValue,       // 外資-多方交易契約金額(千元)
+      finiShortTradeVolume,     // 外資-空方交易口數
+      finiShortTradeValue,      // 外資-空方交易契約金額(千元)
+      finiNetTradeVolume,       // 外資-多空交易口數淨額
+      finiNetTradeValue,        // 外資-多空交易契約金額淨額(千元)
+      finiLongOiVolume,         // 外資-多方未平倉口數
+      finiLongOiValue,          // 外資-多方未平倉契約金額(千元)
+      finiShortOiVolume,        // 外資-空方未平倉口數
+      finiShortOiValue,         // 外資-空方未平倉契約金額(千元)
+      finiNetOiVolume,          // 外資-多空未平倉口數淨額
+      finiNetOiValue,           // 外資-多空未平倉契約金額淨額(千元)
+    ] = raw;
+
+    // 計算三大法人小型臺指多方未平倉口數
+    const instInvestorsMxfLongOi = dealersLongOiVolume + sitcLongOiVolume + finiLongOiVolume;
+
+    // 計算三大法人小型臺指空方未平倉口數
+    const instInvestorsMxfShortOi = dealersShortOiVolume + sitcShortOiVolume + finiShortOiVolume;
+
+    return {
+      date,
+      instInvestorsMxfLongOi,
+      instInvestorsMxfShortOi,
+    };
+  }
 }
