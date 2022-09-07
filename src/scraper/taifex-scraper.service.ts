@@ -757,7 +757,7 @@ export class TaifexScraperService {
 
   async fetchRetailMxfPosition(date: string) {
     // 取得全市場及三大法人小型臺指未平倉口數
-    const [ fetchedMxfMarketOi, fetchedInstInvestorsMxfOi ] = await Promise.all([
+    const [fetchedMxfMarketOi, fetchedInstInvestorsMxfOi] = await Promise.all([
       this.fetchMxfMarketOi(date),
       this.fetchInstInvestorsMxfOi(date),
     ]);
@@ -786,6 +786,56 @@ export class TaifexScraperService {
       retailMxfShortOi,
       retailMxfNetOi,
       retailMxfLongShortRatio,
+    };
+  }
+
+  async fetchExchangeRates(date: string) {
+    // 將 `date` 轉換成 `yyyy/MM/dd` 格式
+    const queryDate = DateTime.fromISO(date).toFormat('yyyy/MM/dd');
+
+    // 建立 FormData
+    const form = new URLSearchParams({
+      queryStartDate: queryDate,  // 日期(起)
+      queryEndDate: queryDate,    // 日期(迄)
+    });
+    const url = 'https://www.taifex.com.tw/cht/3/dailyFXRateDown';
+
+    // 取得回應資料並將 CSV 轉換成 JSON 格式及正確編碼
+    const responseData = await firstValueFrom(this.httpService.post(url, form, { responseType: 'arraybuffer' }))
+      .then(response => csvtojson({ noheader: true, output: 'csv' }).fromString(iconv.decode(response.data, 'big5')));
+
+    // 若該日期非交易日或尚無資料則回傳 null
+    const [fields, row] = responseData;
+    if (fields[0] !== '日期') return null;
+
+    // 將 string 型別數字轉換成 number
+    const raw = row.slice(1).map(data => numeral(data).value());
+
+    const [
+      usdtwd, // 美元／新台幣
+      cnytwd, // 人民幣／新台幣
+      eurusd, // 歐元／美元
+      usdjpy, // 美元／日幣
+      gbpusd, // 英鎊／美元
+      audusd, // 澳幣／美元
+      usdhkd, // 美元／港幣
+      usdcny, // 美元／人民幣
+      usdzar, // 美元／南非幣
+      nzdusd, // 紐幣／美元
+    ] = raw;
+
+    return {
+      date,
+      usdtwd,
+      cnytwd,
+      eurusd,
+      usdjpy,
+      gbpusd,
+      audusd,
+      usdhkd,
+      usdcny,
+      usdzar,
+      nzdusd,
     };
   }
 
