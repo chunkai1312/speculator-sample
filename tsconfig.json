@@ -16,6 +16,14 @@
     "noImplicitAny": false,
     "strictBindCallApply": false,
     "forceConsistentCasingInFileNames": false,
-    "noFallthroughCasesInSwitch": false
+    "noFallthroughCasesInSwitch": false,
+    "paths": {
+      "@speculator/common": [
+        "libs/common/src"
+      ],
+      "@speculator/common/*": [
+        "libs/common/src/*"
+      ]
+    }
   }
 }
