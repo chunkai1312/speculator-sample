@@ -1,3 +1,4 @@
+import * as _ from 'lodash';
 import * as cheerio from 'cheerio';
 import * as iconv from 'iconv-lite';
 import * as numeral from 'numeral';
@@ -271,5 +272,132 @@ export class TwseScraperService {
       shortBalance,
       shortChange,
     };
+  }
+
+  async fetchIndicesQuotes(date: string) {
+    // 將 `date` 轉換成 `yyyyMMdd` 格式
+    const formattedDate = DateTime.fromISO(date).toFormat('yyyyMMdd');
+
+    // 建立 URL 查詢參數
+    const query = new URLSearchParams({
+      response: 'json',     // 指定回應格式為 JSON
+      date: formattedDate,  // 指定資料日期
+    });
+    const url = `https://www.twse.com.tw/exchangeReport/MI_5MINS_INDEX?${query}`;
+
+    // 取得回應資料
+    const responseData = await firstValueFrom(this.httpService.get(url))
+      .then(response => (response.data.stat === 'OK') ? response.data : null);
+
+    // 若該日期非交易日或尚無成交資訊則回傳 null
+    if (!responseData) return null;
+
+    // 整理每 5 秒指數統計數據
+    const quotes = responseData.data.reduce((quotes, row) => {
+      const [
+        time,   // 時間
+        IX0001, // 發行量加權股價指數
+        IX0007, // 未含金融保險股指數
+        IX0008, // 未含電子股指數
+        IX0009, // 未含金融電子股指數
+        IX0010, // 水泥類指數
+        IX0011, // 食品類指數
+        IX0012, // 塑膠類指數
+        IX0016, // 紡織纖維類指數
+        IX0017, // 電機機械類指數
+        IX0018, // 電器電纜類指數
+        IX0019, // 化學生技醫療類指數
+        IX0020, // 化學類指數
+        IX0021, // 生技醫療類指數
+        IX0022, // 玻璃陶瓷類指數
+        IX0023, // 造紙類指數
+        IX0024, // 鋼鐵類指數
+        IX0025, // 橡膠類指數
+        IX0026, // 汽車類指數
+        IX0027, // 電子類指數
+        IX0028, // 半導體類指數
+        IX0029, // 電腦及週邊設備類指數
+        IX0030, // 光電類指數
+        IX0031, // 通信網路類指數
+        IX0032, // 電子零組件類指數
+        IX0033, // 電子通路類指數
+        IX0034, // 資訊服務類指數
+        IX0035, // 其他電子類指數
+        IX0036, // 建材營造類指數
+        IX0037, // 航運類指數
+        IX0038, // 觀光類指數
+        IX0039, // 金融保險類指數
+        IX0040, // 貿易百貨類指數
+        IX0041, // 油電燃氣類指數
+        IX0042, // 其他類指數
+      ] = row;
+
+      return [
+        ...quotes,
+        { date, time, symbol: 'IX0001', name: '發行量加權股價指數', price: numeral(IX0001).value()},
+        { date, time, symbol: 'IX0007', name: '未含金融保險股指數', price: numeral(IX0007).value()},
+        { date, time, symbol: 'IX0008', name: '未含電子股指數', price: numeral(IX0008).value()},
+        { date, time, symbol: 'IX0009', name: '未含金融電子股指數', price: numeral(IX0009).value()},
+        { date, time, symbol: 'IX0010', name: '水泥類指數', price: numeral(IX0010).value()},
+        { date, time, symbol: 'IX0011', name: '食品類指數', price: numeral(IX0011).value()},
+        { date, time, symbol: 'IX0012', name: '塑膠類指數', price: numeral(IX0012).value()},
+        { date, time, symbol: 'IX0016', name: '紡織纖維類指數', price: numeral(IX0016).value()},
+        { date, time, symbol: 'IX0017', name: '電機機械類指數', price: numeral(IX0017).value()},
+        { date, time, symbol: 'IX0018', name: '電器電纜類指數', price: numeral(IX0018).value()},
+        { date, time, symbol: 'IX0019', name: '化學生技醫療類指數', price: numeral(IX0019).value()},
+        { date, time, symbol: 'IX0020', name: '化學類指數', price: numeral(IX0020).value()},
+        { date, time, symbol: 'IX0021', name: '生技醫療類指數', price: numeral(IX0021).value()},
+        { date, time, symbol: 'IX0022', name: '玻璃陶瓷類指數', price: numeral(IX0022).value()},
+        { date, time, symbol: 'IX0023', name: '造紙類指數', price: numeral(IX0023).value()},
+        { date, time, symbol: 'IX0024', name: '鋼鐵類指數', price: numeral(IX0024).value()},
+        { date, time, symbol: 'IX0025', name: '橡膠類指數', price: numeral(IX0025).value()},
+        { date, time, symbol: 'IX0026', name: '汽車類指數', price: numeral(IX0026).value()},
+        { date, time, symbol: 'IX0027', name: '電子工業類指數', price: numeral(IX0027).value()},
+        { date, time, symbol: 'IX0028', name: '半導體類指數', price: numeral(IX0028).value()},
+        { date, time, symbol: 'IX0029', name: '電腦及週邊設備類指數', price: numeral(IX0029).value()},
+        { date, time, symbol: 'IX0030', name: '光電類指數', price: numeral(IX0030).value()},
+        { date, time, symbol: 'IX0031', name: '通信網路類指數', price: numeral(IX0031).value()},
+        { date, time, symbol: 'IX0032', name: '電子零組件類指數', price: numeral(IX0032).value()},
+        { date, time, symbol: 'IX0033', name: '電子通路類指數', price: numeral(IX0033).value()},
+        { date, time, symbol: 'IX0034', name: '資訊服務類指數', price: numeral(IX0034).value()},
+        { date, time, symbol: 'IX0035', name: '其他電子類指數', price: numeral(IX0035).value()},
+        { date, time, symbol: 'IX0036', name: '建材營造類指數', price: numeral(IX0036).value()},
+        { date, time, symbol: 'IX0037', name: '航運類指數', price: numeral(IX0037).value()},
+        { date, time, symbol: 'IX0038', name: '觀光類指數', price: numeral(IX0038).value()},
+        { date, time, symbol: 'IX0039', name: '金融保險類指數', price: numeral(IX0039).value()},
+        { date, time, symbol: 'IX0040', name: '貿易百貨類指數', price: numeral(IX0040).value()},
+        { date, time, symbol: 'IX0041', name: '油電燃氣類指數', price: numeral(IX0041).value()},
+        { date, time, symbol: 'IX0042', name: '其他類指數', price: numeral(IX0042).value()},
+      ];
+    }, []);
+
+    // 計算開高低收以及漲跌幅
+    const data = _(quotes)
+      .groupBy('symbol')
+      .map((data: any[]) => {
+        const [ prev, ...quotes ] = data;
+        const { date, symbol, name } = prev;
+        const openPrice = _.minBy(quotes, 'time').price;
+        const highPrice = _.maxBy(quotes, 'price').price;
+        const lowPrice = _.minBy(quotes, 'price').price;
+        const closePrice = _.maxBy(quotes, 'time').price;
+        const referencePrice = prev.price;
+        const change = numeral(closePrice).subtract(referencePrice).value();
+        const changePercent = +numeral(change).divide(referencePrice).multiply(100).format('0.00');
+        return {
+          date,           // 日期
+          symbol,         // 指數代號
+          name,           // 指數名稱
+          openPrice,      // 開盤價
+          highPrice,      // 最高價
+          lowPrice,       // 最低價
+          closePrice,     // 收盤價
+          change,         // 漲跌
+          changePercent,  // 漲跌幅
+        };
+      })
+      .value();
+
+    return data;
   }
 }
