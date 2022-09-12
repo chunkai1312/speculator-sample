@@ -3,9 +3,10 @@ import * as cheerio from 'cheerio';
 import * as iconv from 'iconv-lite';
 import * as numeral from 'numeral';
 import { DateTime } from 'luxon';
+import { firstValueFrom } from 'rxjs';
 import { Injectable } from '@nestjs/common';
 import { HttpService } from '@nestjs/axios';
-import { firstValueFrom } from 'rxjs';
+import { getTwseIndexSymbolByName } from '@speculator/common';
 
 @Injectable()
 export class TwseScraperService {
@@ -397,6 +398,48 @@ export class TwseScraperService {
         };
       })
       .value();
+
+    return data;
+  }
+
+  async fetchIndicesTrades(date: string) {
+    // // 將 `date` 轉換成 `yyyyMMdd` 格式
+    const formattedDate = DateTime.fromISO(date).toFormat('yyyyMMdd');
+
+    // 建立 URL 查詢參數
+    const query = new URLSearchParams({
+      response: 'json',     // 指定回應格式為 JSON
+      date: formattedDate,  // 指定資料日期
+    });
+    const url = `https://www.twse.com.tw/exchangeReport/BFIAMU?${query}`;
+
+    // 取得回應資料
+    const responseData = await firstValueFrom(this.httpService.get(url))
+      .then(response => (response.data.stat === 'OK') ? response.data : null);
+
+    // 若該日期非交易日或尚無成交資訊則回傳 null
+    if (!responseData) return null;
+
+    // 取得市場成交量值
+    const market = await this.fetchMarketTrades(date);
+
+    // 計算成交比重
+    const data = responseData.data.map(row => {
+      const [
+        name,         // 分類指數名稱
+        tradeVolume,  // 成交股數
+        tradeValue,   // 成交金額
+        transaction,  // 成交筆數
+        change,       // 漲跌指數
+      ] = row;
+      return {
+        date,
+        symbol: getTwseIndexSymbolByName(name.trim()),
+        tradeVolume: numeral(tradeVolume).value(),
+        tradeValue: numeral(tradeValue).value(),
+        tradeWeight: +numeral(tradeValue).divide(market.tradeValue).multiply(100).format('0.00'),
+      };
+    });
 
     return data;
   }
