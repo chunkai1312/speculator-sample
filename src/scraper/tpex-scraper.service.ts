@@ -4,7 +4,7 @@ import { DateTime } from 'luxon';
 import { firstValueFrom } from 'rxjs';
 import { Injectable } from '@nestjs/common';
 import { HttpService } from '@nestjs/axios';
-import { Index, getTpexIndexSymbolByName } from '@speculator/common';
+import { Index, getTpexIndexSymbolByName, isWarrant } from '@speculator/common';
 
 @Injectable()
 export class TpexScraperService {
@@ -415,6 +415,69 @@ export class TpexScraperService {
 
     // 過濾無對應指數的產業別
     const data = indices.filter(index => index.symbol);
+
+    return data;
+  }
+
+  async fetchEquitiesQuotes(date: string) {
+    // `date` 轉換成 `民國年/MM/dd` 格式
+    const dt = DateTime.fromISO(date);
+    const year = dt.get('year') - 1911;
+    const formattedDate = `${year}/${dt.toFormat('MM/dd')}`;
+
+    // 建立 URL 查詢參數
+    const query = new URLSearchParams({
+      l: 'zh-tw',       // 指定語系為正體中文
+      d: formattedDate, // 指定資料日期
+      o: 'json',        // 指定回應格式為 JSON
+    });
+    const url = `https://www.tpex.org.tw/web/stock/aftertrading/daily_close_quotes/stk_quote_result.php?${query}`;
+
+    // 取得回應資料
+    const responseData = await firstValueFrom(this.httpService.get(url))
+      .then(response => (response.data.iTotalRecords > 0) ? response.data : null);
+
+    // 若該日期非交易日或尚無成交資訊則回傳 null
+    if (!responseData) return null;
+
+    // 整理回應資料
+    const data = responseData.aaData
+      .filter(row => !isWarrant(row[0]))  // 過濾權證
+      .map(row => {
+        const [ symbol, name, ...values ] = row;
+        const [
+          closePrice,   // 收盤價
+          change,       // 漲跌
+          openPrice,    // 開盤價
+          highPrice,    // 最高價
+          lowPrice,     // 最低價
+          avgPrice,     // 均價
+          tradeVolume,  // 成交股數
+          tradeValue,   // 成交金額
+          transaction,  // 成交筆數
+        ] = values.slice(0, 9).map(value => numeral(value).value());
+
+        // 回推參考價
+        const referencePrice = (closePrice && change !== null) && numeral(closePrice).subtract(change).value() || null;
+
+        // 計算漲跌幅
+        const changePercent = (closePrice && change !== null) && +numeral(change).divide(referencePrice).multiply(100).format('0.00') || null;
+
+        return {
+          date,
+          symbol,
+          name,
+          openPrice,
+          highPrice,
+          lowPrice,
+          closePrice,
+          change,
+          changePercent,
+          tradeVolume,
+          tradeValue,
+          transaction,
+        };
+      });
 
     return data;
   }
