@@ -443,4 +443,66 @@ export class TwseScraperService {
 
     return data;
   }
+
+  async fetchEquitiesQuotes(date: string) {
+    // 將 `date` 轉換成 `yyyyMMdd` 格式
+    const formattedDate = DateTime.fromISO(date).toFormat('yyyyMMdd');
+
+    // 建立 URL 查詢參數
+    const query = new URLSearchParams({
+      response: 'json',     // 指定回應格式為 JSON
+      date: formattedDate,  // 指定資料日期
+      type: 'ALLBUT0999',   // 指定分類項目為全部(不含權證、牛熊證、可展延牛熊證)
+    });
+    const url = `https://www.twse.com.tw/exchangeReport/MI_INDEX?${query}`;
+
+    // 取得回應資料
+    const responseData = await firstValueFrom(this.httpService.get(url))
+      .then(response => (response.data.stat === 'OK') ? response.data : null);
+
+    // 若該日期非交易日或尚無成交資訊則回傳 null
+    if (!responseData) return null;
+
+    // 整理回應資料
+    const data = responseData.data9.map(row => {
+      const [ symbol, name, ...values ] = row;
+      const [
+        tradeVolume,  // 成交股數
+        transaction,  // 成交筆數
+        tradeValue,   // 成交金額
+        openPrice,    // 開盤價
+        highPrice,    // 最高價
+        lowPrice,     // 最低價
+        closePrice,   // 收盤價
+      ] = values.slice(0, 7).map(value => numeral(value).value());
+
+      // 計算漲跌
+      const change = values[7].includes('green')
+        ? numeral(values[8]).multiply(-1).value()
+        : numeral(values[8]).value();
+
+      // 回推參考價
+      const referencePrice = closePrice && numeral(closePrice).subtract(change).value();
+
+      // 計算漲跌幅
+      const changePercent = closePrice  && +numeral(change).divide(referencePrice).multiply(100).format('0.00');
+
+      return {
+        date,
+        symbol,
+        name,
+        openPrice,
+        highPrice,
+        lowPrice,
+        closePrice,
+        change,
+        changePercent,
+        tradeVolume,
+        tradeValue,
+        transaction,
+      };
+    });
+
+    return data;
+  }
 }
