@@ -1,9 +1,10 @@
 import * as _ from 'lodash';
 import * as numeral from 'numeral';
 import { DateTime } from 'luxon';
+import { firstValueFrom } from 'rxjs';
 import { Injectable } from '@nestjs/common';
 import { HttpService } from '@nestjs/axios';
-import { firstValueFrom } from 'rxjs';
+import { Index, getTpexIndexSymbolByName } from '@speculator/common';
 
 @Injectable()
 export class TpexScraperService {
@@ -348,6 +349,72 @@ export class TpexScraperService {
         };
       })
       .value();
+
+    return data;
+  }
+
+  async fetchIndicesTrades(date: string) {
+    // `date` 轉換成 `民國年/MM/dd` 格式
+    const dt = DateTime.fromISO(date);
+    const year = dt.get('year') - 1911;
+    const formattedDate = `${year}/${dt.toFormat('MM/dd')}`;
+
+    // 建立 URL 查詢參數
+    const query = new URLSearchParams({
+      l: 'zh-tw',       // 指定語系為正體中文
+      d: formattedDate, // 指定資料日期
+      o: 'json',        // 指定回應格式為 JSON
+    });
+    const url = `https://www.tpex.org.tw/web/stock/historical/trading_vol_ratio/sectr_result.php?${query}`;
+
+    // 取得回應資料
+    const responseData = await firstValueFrom(this.httpService.get(url))
+      .then(response => (response.data.iTotalRecords > 0) ? response.data : null);
+
+    // 若該日期非交易日或尚無成交資訊則回傳 null
+    if (!responseData) return null;
+
+    // 整理回應資料
+    const indices = responseData.aaData.map(row => {
+      const [
+        name,               // 類股名稱
+        tradeValue,         // 成交金額(元)
+        tradeValueWeight,   // 成交金額比重(%)
+        tradeVolume,        // 成交股數
+        tradeVolumeWeight,  // 成交股數比重(%)
+      ] = row;
+      return {
+        date,
+        symbol: getTpexIndexSymbolByName(name),
+        tradeVolume: numeral(tradeVolume).value(),
+        tradeValue: numeral(tradeValue).value(),
+        tradeWeight: numeral(tradeValueWeight).value(),
+      };
+    });
+
+    // 計算電子工業成交量值
+    const electronic = indices.reduce((trades, data) => {
+      return [
+        Index.TPExSemiconductors,
+        Index.TPExComputerAndPeripheralEquipment,
+        Index.TPExOptoelectronic,
+        Index.TPExCommunicationsAndInternet,
+        Index.TPExElectronicPartsComponents,
+        Index.TPExElectronicProductsDistribution,
+        Index.TPExInformationService,
+        Index.TPExOtherElectronic,
+      ].includes(data.symbol)
+        ? { ...trades,
+          tradeVolume: trades.tradeVolume + data.tradeVolume,
+          tradeValue: trades.tradeValue + data.tradeValue,
+          tradeWeight: trades.tradeWeight + data.tradeWeight,
+        } : trades;
+    }, { date, symbol: Index.TPExElectronic, tradeVolume: 0, tradeValue: 0, tradeWeight: 0 });
+
+    indices.push(electronic);
+
+    // 過濾無對應指數的產業別
+    const data = indices.filter(index => index.symbol);
 
     return data;
   }
