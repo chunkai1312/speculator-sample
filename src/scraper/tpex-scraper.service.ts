@@ -481,4 +481,87 @@ export class TpexScraperService {
 
     return data;
   }
+
+  async fetchEquitiesInstInvestorsTrades(date: string) {
+    // `date` 轉換成 `民國年/MM/dd` 格式
+    const dt = DateTime.fromISO(date);
+    const year = dt.get('year') - 1911;
+    const formattedDate = `${year}/${dt.toFormat('MM/dd')}`;
+
+    // 建立 URL 查詢參數
+    const query = new URLSearchParams({
+      l: 'zh-tw',       // 指定語系為正體中文
+      o: 'json',        // 指定回應格式為 JSON
+      se: 'EW',         // 指定所有證券(不含權證、牛熊證)
+      t: 'D',           // 指定日報表
+      d: formattedDate, // 指定資料日期
+    });
+    const url = `https://www.tpex.org.tw/web/stock/3insti/daily_trade/3itrade_hedge_result.php?${query}`;
+
+    // 取得回應資料
+    const responseData = await firstValueFrom(this.httpService.get(url))
+      .then((response) => response.data.iTotalRecords > 0 ? response.data : null);
+
+    // 若該日期非交易日或尚無成交資訊則回傳 null
+    if (!responseData) return null;
+
+    // 整理回應資料
+    const data = responseData.aaData.reduce((tickers, raw) => {
+      const [ symbol, name, ...values ] = raw;
+      const [
+        foreignDealersExcludedBuy,        // 外資及陸資(不含外資自營商)買進股數
+        foreignDealersExcludedSell,       // 外資及陸資(不含外資自營商)賣出股數
+        foreignDealersExcludedNetBuySell, // 外資及陸資(不含外資自營商)買賣超股數
+        foreignDealersBuy,                // 外資自營商買進股數
+        foreignDealersSell,               // 外資自營商賣出股數
+        foreignDealersNetBuySell,         // 外資自營商買賣超股數
+        foreignInvestorsBuy,              // 外資及陸資買進股數
+        foreignInvestorsSell,             // 外資及陸資賣出股數
+        foreignInvestorsNetBuySell,       // 外資及陸資買賣超股數
+        sitcBuy,                          // 投信買進股數
+        sitcSell,                         // 投信賣出股數
+        sitcNetBuySell,                   // 投信買賣超股數
+        dealersProprietaryBuy,            // 自營商(自行買賣)買進股數
+        dealersProprietarySell,           // 自營商(自行買賣)賣出股數
+        dealersProprietaryNetBuySell,     // 自營商(自行買賣)買賣超股數
+        dealersHedgeBuy,                  // 自營商(避險)買進股數
+        dealersHedgeSell,                 // 自營商(避險)賣出股數
+        dealersHedgeNetBuySell,           // 自營商(避險)買賣超股數
+        dealersBuy,                       // 自營商買進股數
+        dealersSell,                      // 自營商賣出股數
+        dealersNetBuySell,                // 自營商買賣超股數
+        instInvestorsNetBuySell,          // 三大法人買賣超股數合計
+      ] = values.map(value => numeral(value).value());
+
+      const ticker = {
+        date,
+        symbol,
+        name,
+        foreignDealersExcludedBuy,
+        foreignDealersExcludedSell,
+        foreignDealersExcludedNetBuySell,
+        foreignDealersBuy,
+        foreignDealersSell,
+        foreignDealersNetBuySell,
+        foreignInvestorsBuy,
+        foreignInvestorsSell,
+        foreignInvestorsNetBuySell,
+        sitcBuy,
+        sitcSell,
+        sitcNetBuySell,
+        dealersProprietaryBuy,
+        dealersProprietarySell,
+        dealersProprietaryNetBuySell,
+        dealersHedgeBuy,
+        dealersHedgeSell,
+        dealersHedgeNetBuySell,
+        dealersBuy,
+        dealersSell,
+        dealersNetBuySell,
+      };
+      return [ ...tickers, ticker ];
+    }, []);
+
+    return data;
+  }
 }
