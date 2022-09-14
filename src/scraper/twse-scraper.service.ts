@@ -505,4 +505,93 @@ export class TwseScraperService {
 
     return data;
   }
+
+  async fetchEquitiesInstInvestorsTrades(date: string) {
+    // 將 `date` 轉換成 `yyyyMMdd` 格式
+    const formattedDate = DateTime.fromISO(date).toFormat('yyyyMMdd');
+
+    // 建立 URL 查詢參數
+    const query = new URLSearchParams({
+      response: 'json',     // 指定回應格式為 JSON
+      date: formattedDate,  // 指定資料日期
+      selectType: 'ALLBUT0999',   // 指定分類項目為全部(不含權證、牛熊證、可展延牛熊證)
+    });
+    const url = `https://www.twse.com.tw/fund/T86?${query}`;
+
+    // 取得回應資料
+    const responseData = await firstValueFrom(this.httpService.get(url))
+      .then((response) => (response.data.stat === 'OK' ? response.data : null));
+
+    // 若該日期非交易日或尚無成交資訊則回傳 null
+    if (!responseData) return null;
+
+    // 整理回應資料
+    const data = responseData.data.reduce((tickers, row) => {
+      const [ symbol, name, ...values ] = row;
+      const [
+        foreignDealersExcludedBuy,        // 外陸資買進股數(不含外資自營商)
+        foreignDealersExcludedSell,       // 外陸資賣出股數(不含外資自營商)
+        foreignDealersExcludedNetBuySell, // 外陸資買賣超股數(不含外資自營商)
+        foreignDealersBuy,                // 外資自營商買進股數
+        foreignDealersSell,               // 外資自營商賣出股數
+        foreignDealersNetBuySell,         // 外資自營商買賣超股數
+        sitcBuy,                          // 投信買進股數
+        sitcSell,                         // 投信賣出股數
+        sitcNetBuySell,                   // 投信買賣超股數
+        dealersNetBuySell,                // 自營商買賣超股數
+        dealersProprietaryBuy,            // 自營商買進股數(自行買賣)
+        dealersProprietarySell,           // 自營商賣出股數(自行買賣)
+        dealersProprietaryNetBuySell,     // 自營商買賣超股數(自行買賣)
+        dealersHedgeBuy,                  // 自營商買進股數(避險)
+        dealersHedgeSell,                 // 自營商賣出股數(避險)
+        dealersHedgeNetBuySell,           // 自營商買賣超股數(避險)
+        instInvestorsNetBuySell,          // 三大法人買賣超股數
+      ] = values.map(value => numeral(value).value());
+
+      // 計算外資合計買進股數
+      const foreignInvestorsBuy = foreignDealersExcludedBuy + foreignDealersBuy;
+
+      // 外資合計賣出股數
+      const foreignInvestorsSell = foreignDealersExcludedSell + foreignDealersSell;
+
+      // 計算外資合計買賣超股數
+      const foreignInvestorsNetBuySell = foreignDealersExcludedNetBuySell + foreignDealersNetBuySell;
+
+      // 計算自營商合計買進股數
+      const dealersBuy = dealersProprietaryBuy + dealersHedgeBuy;
+
+      // 計算自營商合計賣出股數
+      const dealersSell = dealersProprietarySell + dealersHedgeSell;
+
+      const ticker = {
+        date,
+        symbol,
+        name: name.trim(),
+        foreignDealersExcludedBuy,
+        foreignDealersExcludedSell,
+        foreignDealersExcludedNetBuySell,
+        foreignDealersBuy,
+        foreignDealersSell,
+        foreignDealersNetBuySell,
+        foreignInvestorsBuy,
+        foreignInvestorsSell,
+        foreignInvestorsNetBuySell,
+        sitcBuy,
+        sitcSell,
+        sitcNetBuySell,
+        dealersProprietaryBuy,
+        dealersProprietarySell,
+        dealersProprietaryNetBuySell,
+        dealersHedgeBuy,
+        dealersHedgeSell,
+        dealersHedgeNetBuySell,
+        dealersBuy,
+        dealersSell,
+        dealersNetBuySell,
+      };
+      return [ ...tickers, ticker ];
+    }, []);
+
+    return data;
+  }
 }
