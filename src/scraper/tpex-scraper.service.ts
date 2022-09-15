@@ -564,4 +564,43 @@ export class TpexScraperService {
 
     return data;
   }
+
+  async fetchEquitiesValues(date: string) {
+    // `date` 轉換成 `民國年/MM/dd` 格式
+    const dt = DateTime.fromISO(date);
+    const year = dt.get('year') - 1911;
+    const formattedDate = `${year}/${dt.toFormat('MM/dd')}`;
+
+    // 建立 URL 查詢參數
+    const query = new URLSearchParams({
+      l: 'zh-tw',       // 指定語系為正體中文
+      o: 'json',        // 指定回應格式為 JSON
+      d: formattedDate, // 指定資料日期
+    });
+    const url = `https://www.tpex.org.tw/web/stock/aftertrading/peratio_analysis/pera_result.php?${query}`;
+
+    // 取得回應資料
+    const responseData = await firstValueFrom(this.httpService.get(url))
+      .then((response) => response.data.iTotalRecords > 0 ? response.data : null);
+
+    // 若該日期非交易日或尚無成交資訊則回傳 null
+    if (!responseData) return null;
+
+    // 整理回應資料
+    const data = responseData.aaData.reduce((tickers, row) => {
+      const [ symbol, name, peRatio, dividendPerShare, dividendYear, dividendYield, pbRatio ] = row;
+      const ticker = {
+        date,
+        symbol,
+        name,
+        peRatio: numeral(peRatio).value(),  // 本益比
+        pbRatio: numeral(pbRatio).value(),  // 股價淨值比
+        dividendYield: numeral(dividendYield).value(),  // 殖利率
+        dividendYear: dividendYear + 1911,  // 股利年度
+      };
+      return [ ...tickers, ticker ];
+    }, []);
+
+    return data;
+  }
 }
