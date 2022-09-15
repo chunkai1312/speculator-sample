@@ -594,4 +594,41 @@ export class TwseScraperService {
 
     return data;
   }
+
+  async fetchEquitiesValues(date: string) {
+    // 將 `date` 轉換成 `yyyyMMdd` 格式
+    const formattedDate = DateTime.fromISO(date).toFormat('yyyyMMdd');
+
+    // 建立 URL 查詢參數
+    const query = new URLSearchParams({
+      response: 'json',     // 指定回應格式為 JSON
+      date: formattedDate,  // 指定資料日期
+      selectType: 'ALL',    // 指定分類項目為全部
+    });
+    const url = `https://www.twse.com.tw/exchangeReport/BWIBBU_d?${query}`;
+
+    // 取得回應資料
+    const responseData = await firstValueFrom(this.httpService.get(url))
+      .then((response) => (response.data.stat === 'OK' ? response.data : null));
+
+    // 若該日期非交易日或尚無成交資訊則回傳 null
+    if (!responseData) return null;
+
+    // 整理回應資料
+    const data = responseData.data.reduce((tickers, row) => {
+      const [ symbol, name, dividendYield, dividendYear, peRatio, pbRatio, fiscalYearQuarter ] = row;
+      const ticker = {
+        date,
+        symbol,
+        name,
+        peRatio: numeral(peRatio).value(),  // 本益比
+        pbRatio: numeral(pbRatio).value(),  // 股價淨值比
+        dividendYield: numeral(dividendYield).value(),  // 殖利率
+        dividendYear: dividendYear + 1911,  // 股利年度
+      };
+      return [ ...tickers, ticker ];
+    }, []);
+
+    return data;
+  }
 }
