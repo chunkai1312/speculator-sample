@@ -256,22 +256,22 @@ export class TwseScraperService {
     ] = raw;
 
     // 計算融資餘額增減(交易單位)
-    const marginChange = marginBalance - marginBalancePrev;
+    const marginBalanceChange = marginBalance - marginBalancePrev;
 
     // 計算融資餘額增減(仟元)
-    const marginChangeValue = marginBalanceValue - marginBalanceValuePrev;
+    const marginBalanceValueChange = marginBalanceValue - marginBalanceValuePrev;
 
     // 計算融券餘額增減(交易單位)
-    const shortChange = shortBalance - shortBalancePrev;
+    const shortBalanceChange = shortBalance - shortBalancePrev;
 
     return {
       date,
       marginBalance,
-      marginChange,
+      marginBalanceChange,
       marginBalanceValue,
-      marginChangeValue,
+      marginBalanceValueChange,
       shortBalance,
-      shortChange,
+      shortBalanceChange,
     };
   }
 
