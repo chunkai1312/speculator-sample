@@ -13,6 +13,6 @@ import { ScraperModule } from '../scraper/scraper.module';
     ScraperModule,
   ],
   providers: [MarketStatsRepository, MarketStatsService],
-  exports: [MarketStatsRepository],
+  exports: [MarketStatsRepository, MarketStatsService],
 })
 export class MarketStatsModule {}
