@@ -8,6 +8,7 @@ import { MarketStatsModule } from './market-stats/market-stats.module';
 import { TickerModule } from './ticker/ticker.module';
 import { MarketStatsService } from './market-stats/market-stats.service';
 import { TickerService } from './ticker/ticker.service';
+import { ReportModule } from './report/report.module';
 
 @Module({
   imports: [
@@ -17,6 +18,7 @@ import { TickerService } from './ticker/ticker.service';
     ScraperModule,
     MarketStatsModule,
     TickerModule,
+    ReportModule,
   ],
 })
 export class AppModule implements OnApplicationBootstrap {
