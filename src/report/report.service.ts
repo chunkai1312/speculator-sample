@@ -84,8 +84,8 @@ export class ReportService {
       dataRow.getCell('marginBalanceChange').style = { numFmt: '#,##0.00', font: { color: { argb: getFontColorByNetChange(row.marginPurchaseChange) } } };
       dataRow.getCell('shortBalance').style = { numFmt: '#,##0' };
       dataRow.getCell('shortBalanceChange').style = { numFmt: '#,##0', font: { color: { argb: getFontColorByNetChange(row.shortSaleChange) } } };
-      dataRow.getCell('finiTxfNetOi').style = { numFmt: '#,##0', font: { color: { argb: getFontColorByNetChange(row.qfiiTxNetOi) } } };
-      dataRow.getCell('finiTxfNetOiChange').style = { numFmt: '#,##0', font: { color: { argb: getFontColorByNetChange(row.qfiiTxNetOiChange) } } };
+      dataRow.getCell('finiTxfNetOi').style = { numFmt: '#,##0', font: { color: { argb: getFontColorByNetChange(row.finiTxNetOi) } } };
+      dataRow.getCell('finiTxfNetOiChange').style = { numFmt: '#,##0', font: { color: { argb: getFontColorByNetChange(row.finiTxNetOiChange) } } };
       dataRow.getCell('finiTxoCallsNetOiValue').style = { numFmt: '#,##0.00', font: { color: { argb: getFontColorByNetChange(row.finiTxoCallsNetOiValue) } } };
       dataRow.getCell('finiTxoCallsNetOiValueChange').style = { numFmt: '#,##0.00', font: { color: { argb: getFontColorByNetChange(row.finiTxoCallsNetOiValueChange) } } };
       dataRow.getCell('finiTxoPutsNetOiValue').style = { numFmt: '#,##0.00', font: { color: { argb: getFontColorByNetChange(row.finiTxoPutsNetOiValue) } } };
@@ -299,5 +299,115 @@ export class ReportService {
     worksheet.getRow(2).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'ffffff' } };
 
     return workbook;
+  }
+
+  async addInstInvestorsTradesSheet(workbook: ExcelJS.Workbook, options: { date: string, market: Market }) {
+    const worksheet = workbook.addWorksheet();
+
+    worksheet.columns = [
+      { header: '代號', key: 'finiNetBuySymbol', width: 10 },
+      { header: '股票', key: 'finiNetBuyName', width: 15 },
+      { header: '張數', key: 'finiNetBuyVolume', width: 10, style: { alignment: { horizontal: 'right' } } },
+      { header: '股價', key: 'finiNetBuyClosePrice', width: 8, style: { alignment: { horizontal: 'right' } } },
+      { header: '漲跌幅', key: 'finiNetBuyChangePercent', width: 8, style: { alignment: { horizontal: 'right' } } },
+      { header: '成交量(張)', key: 'finiNetBuyTotalVolume', width: 12, style: { alignment: { horizontal: 'right' } } },
+      { header: '', key: '', width: 8 },
+      { header: '代號', key: 'finiNetSellSymbol', width: 10 },
+      { header: '股票', key: 'finiNetSellName', width: 15 },
+      { header: '張數', key: 'finiNetSellVolume', width: 10, style: { alignment: { horizontal: 'right' } } },
+      { header: '股價', key: 'finiNetSellClosePrice', width: 8, style: { alignment: { horizontal: 'right' } } },
+      { header: '漲跌幅', key: 'finiNetSellChangePercent', width: 8, style: { alignment: { horizontal: 'right' } } },
+      { header: '成交量(張)', key: 'finiNetSellTotalVolume', width: 12, style: { alignment: { horizontal: 'right' } } },
+      { header: '', key: '', width: 8 },
+      { header: '代號', key: 'sitcNetBuySymbol', width: 10 },
+      { header: '股票', key: 'sitcNetBuyName', width: 15 },
+      { header: '張數', key: 'sitcNetBuyVolume', width: 10, style: { alignment: { horizontal: 'right' } } },
+      { header: '股價', key: 'sitcNetBuyClosePrice', width: 8, style: { alignment: { horizontal: 'right' } } },
+      { header: '漲跌幅', key: 'sitcNetBuyChangePercent', width: 8, style: { alignment: { horizontal: 'right' } } },
+      { header: '成交量(張)', key: 'sitcNetBuyTotalVolume', width: 12, style: { alignment: { horizontal: 'right' } } },
+      { header: '', key: '', width: 8 },
+      { header: '代號', key: 'sitcNetSellSymbol', width: 10 },
+      { header: '股票', key: 'sitcNetSellName', width: 15 },
+      { header: '張數', key: 'sitcNetSellVolume', width: 10, style: { alignment: { horizontal: 'right' } } },
+      { header: '股價', key: 'sitcNetSellClosePrice', width: 8, style: { alignment: { horizontal: 'right' } } },
+      { header: '漲跌幅', key: 'sitcNetSellChangePercent', width: 8, style: { alignment: { horizontal: 'right' } } },
+      { header: '成交量(張)', key: 'sitcNetSellTotalVolume', width: 12, style: { alignment: { horizontal: 'right' } } },
+    ];
+
+    const finiNetBuyList = await this.tickerRepository.getInstInvestorsTrades({ ...options, inst: 'fini', net: 'buy' });
+    const finiNetSellList = await this.tickerRepository.getInstInvestorsTrades({ ...options, inst: 'fini', net: 'sell' });
+    const sitcNetBuyList = await this.tickerRepository.getInstInvestorsTrades({ ...options, inst: 'sitc', net: 'buy' });
+    const sitcNetSellList = await this.tickerRepository.getInstInvestorsTrades({ ...options, inst: 'sitc', net: 'sell' });
+
+    const length = Math.max(finiNetBuyList.length, finiNetSellList.length, sitcNetBuyList.length, sitcNetSellList.length);
+
+    Array(length).fill({}).forEach((row, i) => {
+      row = {
+        finiNetBuySymbol: finiNetBuyList[i]?.symbol,
+        finiNetBuyName: finiNetBuyList[i]?.name,
+        finiNetBuyVolume: finiNetBuyList[i]?.finiNetBuySell && numeral(finiNetBuyList[i].finiNetBuySell).divide(1000).value(),
+        finiNetBuyClosePrice: finiNetBuyList[i]?.closePrice,
+        finiNetBuyChangePercent: finiNetBuyList[i]?.changePercent && numeral(finiNetBuyList[i].changePercent).divide(100).value(),
+        finiNetBuyTotalVolume: finiNetBuyList[i]?.tradeVolume && numeral(finiNetBuyList[i].tradeVolume).divide(1000).value(),
+        finiNetSellSymbol: finiNetSellList[i]?.symbol,
+        finiNetSellName: finiNetSellList[i]?.name,
+        finiNetSellVolume: finiNetSellList[i]?.finiNetBuySell && numeral(finiNetSellList[i].finiNetBuySell).divide(1000).value(),
+        finiNetSellClosePrice: finiNetSellList[i]?.closePrice,
+        finiNetSellChangePercent: finiNetSellList[i]?.changePercent && numeral(finiNetSellList[i].changePercent).divide(100).value(),
+        finiNetSellTotalVolume: finiNetSellList[i]?.tradeVolume && numeral(finiNetSellList[i].tradeVolume).divide(1000).value(),
+        sitcNetBuySymbol: sitcNetBuyList[i]?.symbol,
+        sitcNetBuyName: sitcNetBuyList[i]?.name,
+        sitcNetBuyVolume: sitcNetBuyList[i]?.finiNetBuySell && numeral(sitcNetBuyList[i].sitcNetBuySell).divide(1000).value(),
+        sitcNetBuyClosePrice: sitcNetBuyList[i]?.closePrice,
+        sitcNetBuyChangePercent: sitcNetBuyList[i]?.changePercent && numeral(sitcNetBuyList[i].changePercent).divide(100).value(),
+        sitcNetBuyTotalVolume: sitcNetBuyList[i]?.tradeVolume && numeral(sitcNetBuyList[i].tradeVolume).divide(1000).value(),
+        sitcNetSellSymbol: sitcNetSellList[i]?.symbol,
+        sitcNetSellName: sitcNetSellList[i]?.name,
+        sitcNetSellVolume: sitcNetSellList[i]?.finiNetBuySell && numeral(sitcNetSellList[i].sitcNetBuySell).divide(1000).value(),
+        sitcNetSellClosePrice: sitcNetSellList[i]?.closePrice,
+        sitcNetSellChangePercent: sitcNetSellList[i]?.changePercent && numeral(sitcNetSellList[i].changePercent).divide(100).value(),
+        sitcNetSellTotalVolume: sitcNetSellList[i]?.tradeVolume && numeral(sitcNetSellList[i].tradeVolume).divide(1000).value(),
+      }
+
+      const dataRow = worksheet.addRow(row);
+      dataRow.getCell('finiNetBuyVolume').style = { numFmt: '#,##0' };
+      dataRow.getCell('finiNetBuyClosePrice').style = { numFmt: '#0.00', font: { color: { argb: getFontColorByNetChange(finiNetBuyList[i]?.change) } } };
+      dataRow.getCell('finiNetBuyChangePercent').style = { numFmt: '#0.00%', font: { color: { argb: getFontColorByNetChange(finiNetBuyList[i]?.change) } } };
+      dataRow.getCell('finiNetBuyTotalVolume').style = { numFmt: '#,##0' };
+      dataRow.getCell('finiNetSellVolume').style = { numFmt: '#,##0' };
+      dataRow.getCell('finiNetSellClosePrice').style = { numFmt: '#0.00', font: { color: { argb: getFontColorByNetChange(finiNetSellList[i]?.change) } } };
+      dataRow.getCell('finiNetSellChangePercent').style = { numFmt: '#0.00%', font: { color: { argb: getFontColorByNetChange(finiNetSellList[i]?.change) } } };
+      dataRow.getCell('finiNetSellTotalVolume').style = { numFmt: '#,##0' };
+      dataRow.getCell('sitcNetBuyVolume').style = { numFmt: '#,##0' };
+      dataRow.getCell('sitcNetBuyClosePrice').style = { numFmt: '#0.00', font: { color: { argb: getFontColorByNetChange(sitcNetBuyList[i]?.change) } } };
+      dataRow.getCell('sitcNetBuyChangePercent').style = { numFmt: '#0.00%', font: { color: { argb: getFontColorByNetChange(sitcNetBuyList[i]?.change) } } };
+      dataRow.getCell('sitcNetBuyTotalVolume').style = { numFmt: '#,##0' };
+      dataRow.getCell('sitcNetSellVolume').style = { numFmt: '#,##0' };
+      dataRow.getCell('sitcNetSellClosePrice').style = { numFmt: '#0.00', font: { color: { argb: getFontColorByNetChange(sitcNetSellList[i]?.change) } } };
+      dataRow.getCell('sitcNetSellChangePercent').style = { numFmt: '#0.00%', font: { color: { argb: getFontColorByNetChange(sitcNetSellList[i]?.change) } } };
+      dataRow.getCell('sitcNetSellTotalVolume').style = { numFmt: '#,##0' };
+      dataRow.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'ffffff' } };
+      dataRow.height = 20;
+    });
+
+    const headerRow = worksheet.insertRow(1, ['外資買超', '', '', '', '', '', '', '外資賣超', '', '', '', '', '', '', '投信買超', '', '', '', '', '', '', '投信賣超', '', '', '', '', '']);
+    const titlefiniNetBuyCell = headerRow.getCell(1);
+    const titlefiniNetSellCell = headerRow.getCell(8);
+    const titleSticNetBuyCell = headerRow.getCell(15);
+    const titlesitcNetSellCell = headerRow.getCell(22);
+    titlefiniNetBuyCell.style = { alignment: { horizontal: 'center' }, fill: { type: 'pattern', pattern: 'solid', fgColor:{ argb: 'ffe0b2' } } };
+    titlefiniNetSellCell.style = { alignment: { horizontal: 'center' }, fill: { type: 'pattern', pattern: 'solid', fgColor:{ argb: 'ffe0b2' } } };
+    titleSticNetBuyCell.style = { alignment: { horizontal: 'center' }, fill: { type: 'pattern', pattern: 'solid', fgColor:{ argb: 'ffe0b2' } } };
+    titlesitcNetSellCell.style = { alignment: { horizontal: 'center' }, fill: { type: 'pattern', pattern: 'solid', fgColor:{ argb: 'ffe0b2' } } };
+    worksheet.mergeCells(+titlefiniNetBuyCell.row, +titlefiniNetBuyCell.col, +titlefiniNetBuyCell.row, +titlefiniNetBuyCell.col + 5)
+    worksheet.mergeCells(+titlefiniNetSellCell.row, +titlefiniNetSellCell.col, +titlefiniNetSellCell.row, +titlefiniNetSellCell.col + 5)
+    worksheet.mergeCells(+titleSticNetBuyCell.row, +titleSticNetBuyCell.col, +titleSticNetBuyCell.row, +titleSticNetBuyCell.col + 5)
+    worksheet.mergeCells(+titlesitcNetSellCell.row, +titlesitcNetSellCell.col, +titlesitcNetSellCell.row, +titlesitcNetSellCell.col + 5)
+    headerRow.alignment = { vertical: 'middle', horizontal: 'center' };
+    headerRow.height = 20;
+
+    const market = getMarketName(options.market);
+    worksheet.name = `${market}外資投信買賣超排行`;
+    worksheet.getRow(2).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'ffffff' } };
   }
 }
