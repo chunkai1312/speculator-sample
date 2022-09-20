@@ -231,4 +231,73 @@ export class ReportService {
 
     return workbook;
   }
+
+  async addMostActivesSheet(workbook: ExcelJS.Workbook, options: { date: string, market: Market }) {
+    const worksheet = workbook.addWorksheet();
+
+    worksheet.columns = [
+      { header: '代號', key: 'volumeSymbol', width: 10 },
+      { header: '股票', key: 'volumeName', width: 15 },
+      { header: '股價', key: 'volumeClosePrice', width: 8, style: { alignment: { horizontal: 'right' } } },
+      { header: '漲跌', key: 'volumeChange', width: 8, style: { alignment: { horizontal: 'right' } } },
+      { header: '漲跌幅', key: 'volumeChangePercent', width: 8, style: { alignment: { horizontal: 'right' } } },
+      { header: '成交量(張)', key: 'volumeTradeVolume', width: 12, style: { alignment: { horizontal: 'right' } } },
+      { header: '', key: '', width: 8 },
+      { header: '代號', key: 'valueSymbol', width: 10 },
+      { header: '股票', key: 'valueName', width: 15 },
+      { header: '股價', key: 'valueClosePrice', width: 8, style: { alignment: { horizontal: 'right' } } },
+      { header: '漲跌', key: 'valueChange', width: 8, style: { alignment: { horizontal: 'right' } } },
+      { header: '漲跌幅', key: 'valueChangePercent', width: 8, style: { alignment: { horizontal: 'right' } } },
+      { header: '成交值(億)', key: 'valueTradeValue', width: 12, style: { alignment: { horizontal: 'right' } } },
+    ];
+
+    const mostActivesByVolume = await this.tickerRepository.getMostActives({ ...options, trade: 'volume' });
+    const mostActivesByValue = await this.tickerRepository.getMostActives({ ...options, trade: 'value' });
+    const length = mostActivesByVolume.length
+
+    Array(length).fill({}).forEach((row, i) => {
+      row = {
+        volumeSymbol: mostActivesByVolume[i]?.symbol,
+        volumeName: mostActivesByVolume[i]?.name,
+        volumeClosePrice: mostActivesByVolume[i]?.closePrice,
+        volumeChange: mostActivesByVolume[i]?.change,
+        volumeChangePercent: mostActivesByVolume[i]?.changePercent && numeral(mostActivesByVolume[i].changePercent).divide(100).value(),
+        volumeTradeVolume: mostActivesByVolume[i]?.tradeVolume && numeral(mostActivesByVolume[i].tradeVolume).divide(1000).value(),
+        valueSymbol: mostActivesByValue[i]?.symbol,
+        valueName: mostActivesByValue[i]?.name,
+        valueClosePrice: mostActivesByValue[i]?.closePrice,
+        valueChange: mostActivesByValue[i]?.change,
+        valueChangePercent: mostActivesByValue[i]?.changePercent && numeral(mostActivesByValue[i].changePercent).divide(100).value(),
+        valueTradeValue: mostActivesByValue[i]?.tradeValue && numeral(mostActivesByValue[i].tradeValue).divide(100000000).value(),
+      }
+
+      const dataRow = worksheet.addRow(row);
+      dataRow.getCell('volumeClosePrice').style = { numFmt: '#0.00', font: { color: { argb: getFontColorByNetChange(mostActivesByVolume[i]?.change) } } };
+      dataRow.getCell('volumeChange').style = { numFmt: '#0.00', font: { color: { argb: getFontColorByNetChange(mostActivesByVolume[i]?.change) } } };
+      dataRow.getCell('volumeChangePercent').style = { numFmt: '#0.00%', font: { color: { argb: getFontColorByNetChange(mostActivesByVolume[i]?.change) } } };
+      dataRow.getCell('volumeTradeVolume').style = { numFmt: '#,##0' };
+      dataRow.getCell('valueClosePrice').style = { numFmt: '#0.00', font: { color: { argb: getFontColorByNetChange(mostActivesByValue[i]?.change) } } };
+      dataRow.getCell('valueChange').style = { numFmt: '#0.00', font: { color: { argb: getFontColorByNetChange(mostActivesByValue[i]?.change) } } };
+      dataRow.getCell('valueChangePercent').style = { numFmt: '#0.00%', font: { color: { argb: getFontColorByNetChange(mostActivesByValue[i]?.change) } } };
+      dataRow.getCell('valueTradeValue').style = { numFmt: '#,##0.00' };
+      dataRow.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'ffffff' } };
+      dataRow.height = 20;
+    });
+
+    const headerRow = worksheet.insertRow(1, ['成交量排行', '', '', '', '', '', '', '成交值排行', '', '', '', '', '']);
+    const titleMostActivesByVolumeCell = headerRow.getCell(1);
+    const titleMostActivesByValueCell = headerRow.getCell(8);
+    titleMostActivesByVolumeCell.style = { alignment: { horizontal: 'center' }, fill: { type: 'pattern', pattern: 'solid', fgColor: { argb: 'ffe0b2' } } };
+    titleMostActivesByValueCell.style = { alignment: { horizontal: 'center' }, fill: { type: 'pattern', pattern: 'solid', fgColor: { argb: 'ffe0b2' } } };
+    worksheet.mergeCells(+titleMostActivesByVolumeCell.row, +titleMostActivesByVolumeCell.col, +titleMostActivesByVolumeCell.row, +titleMostActivesByVolumeCell.col + 5)
+    worksheet.mergeCells(+titleMostActivesByValueCell.row, +titleMostActivesByValueCell.col, +titleMostActivesByValueCell.row, +titleMostActivesByValueCell.col + 5)
+    headerRow.alignment = { vertical: 'middle', horizontal: 'center' };
+    headerRow.height = 20;
+
+    const market = getMarketName(options.market);
+    worksheet.name = `${market}成交量值排行`;
+    worksheet.getRow(2).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'ffffff' } };
+
+    return workbook;
+  }
 }
