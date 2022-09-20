@@ -74,4 +74,31 @@ export class TickerRepository {
 
     return data;
   }
+
+  async getMostActives(options?: { date?: string, market?: Market, trade?: 'volume' | 'value', top?: number }) {
+    const date = options?.date || DateTime.local().toISODate();
+    const market = options?.market || Market.TSE;
+    const trade = options?.trade || 'volume';
+    const key = (trade === 'value') ? 'tradeValue' : 'tradeVolume';
+    const top = options?.top || 50;
+
+    const results = await this.model.aggregate([
+      { $match: {
+          date: { $lte: date },
+          type: TickerType.Equity,
+          market: market || { $ne: null },
+        },
+      },
+      { $project: { _id: 0, __v: 0, createdAt: 0 , updatedAt: 0 } },
+      { $sort: { date: -1, [key]: -1 } },
+      { $group: { _id: '$date', data: { $push: '$$ROOT' } } },
+      { $sort: { _id: -1 } },
+      { $limit: 1 },
+    ]);
+
+    const [ tickers ] = results.map(doc => doc.data);
+    const data = tickers.slice(0, top);
+
+    return data;
+  }
 }
