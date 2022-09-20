@@ -101,4 +101,33 @@ export class TickerRepository {
 
     return data;
   }
+
+  async getInstInvestorsTrades(options?: { date?: string, market?: Market, inst?: 'fini' | 'sitc' | 'dealers', net: 'buy' | 'sell', top?: number }) {
+    const date = options?.date || DateTime.local().toISODate();
+    const market = options?.market || Market.TSE;
+    const inst = options?.inst || `fini`;
+    const net = options?.net || 'buy';
+    const top = options?.top || 50;
+    const instKey = `${inst}NetBuySell`;
+
+    const results = await this.model.aggregate([
+      { $match: {
+          date: { $lte: date },
+          type: TickerType.Equity,
+          market: market || { $ne: null },
+          [instKey]: (net === 'sell') ? { $lt: 0 } : { $gt: 0 },
+        },
+      },
+      { $project: { _id: 0, __v: 0, createdAt: 0 , updatedAt: 0 } },
+      { $sort: { date: -1, [instKey]: (net === 'sell') ? 1 : -1 } },
+      { $group: { _id: '$date', data: { $push: '$$ROOT' } } },
+      { $sort: { _id: -1 } },
+      { $limit: 1 },
+    ]);
+
+    const [ tickers ] = results.map(doc => doc.data);
+    const data = tickers.slice(0, top);
+
+    return data;
+  }
 }
