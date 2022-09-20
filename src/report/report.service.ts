@@ -13,6 +13,20 @@ export class ReportService {
     private readonly tickerRepository: TickerRepository,
   ) {}
 
+  async export(options: { date: string }): Promise<ExcelJS.Buffer> {
+    const workbook = await this.createWorkbook();
+    await this.addMarketStatsSheet(workbook, options);
+    await this.addMoneyFlowSheet(workbook, { date: options.date, market: Market.TSE });
+    await this.addMoneyFlowSheet(workbook, { date: options.date, market: Market.OTC });
+    await this.addTopMoversSheet(workbook, { date: options.date, market: Market.TSE });
+    await this.addTopMoversSheet(workbook, { date: options.date, market: Market.OTC });
+    await this.addMostActivesSheet(workbook, { date: options.date, market: Market.TSE });
+    await this.addMostActivesSheet(workbook, { date: options.date, market: Market.OTC });
+    await this.addInstInvestorsTradesSheet(workbook, { date: options.date, market: Market.TSE });
+    await this.addInstInvestorsTradesSheet(workbook, { date: options.date, market: Market.OTC });
+    return workbook.xlsx.writeBuffer();
+  }
+
   async createWorkbook() {
     const workbook = new ExcelJS.Workbook();
     return workbook;
@@ -21,6 +35,7 @@ export class ReportService {
   async addMarketStatsSheet(workbook: ExcelJS.Workbook, options: { date: string }) {
     const worksheet = workbook.addWorksheet();
 
+    // 設定工作表欄位格式
     worksheet.columns = [
       { header: '日期', key: 'date', width: 10, style: { alignment: { vertical: 'middle', horizontal: 'center' } } },
       { header: '加權指數', key: 'taiexPrice', width: 15, style: { alignment: { vertical: 'middle', horizontal: 'center' }, fill: { type: 'pattern', pattern: 'solid', fgColor:{ argb: 'ffcdd2' } } } },
@@ -52,8 +67,10 @@ export class ReportService {
       { header: '新台幣升貶', key: 'usdtwdChange', width: 12.5, style: { alignment: { vertical: 'middle', horizontal: 'center' }, fill: { type: 'pattern', pattern: 'solid', fgColor:{ argb: 'ffccbc' } } } },
     ];
 
+    // 從資料庫取得大盤籌碼數據
     const data = await this.marketStatsRepository.getMarketStats(options);
 
+    // 將資料逐列輸出至工作表
     data.forEach(row => {
       row = {
         ...row,
@@ -71,6 +88,7 @@ export class ReportService {
         usdtwdChange: row.usdtwdChange * -1,
       };
 
+      // 設定工作表行列及儲存格資料格式
       const dataRow = worksheet.addRow(row);
       dataRow.getCell('date').style = { alignment: { horizontal: 'center' } };
       dataRow.getCell('taiexPrice').font = { color: { argb: getFontColorByNetChange(row.taiexChange) } };
@@ -104,6 +122,7 @@ export class ReportService {
       dataRow.height = 20;
     });
 
+    // 設定工作表名稱
     const date = data[0].date.replace(/-/g, '');
     worksheet.name = `${date} 大盤籌碼`;
 
@@ -113,6 +132,7 @@ export class ReportService {
   async addMoneyFlowSheet(workbook: ExcelJS.Workbook, options: { date: string, market: Market }) {
     const worksheet = workbook.addWorksheet();
 
+    // 設定工作表欄位格式
     worksheet.columns = [
       { header: '指數(類股)', key: 'name', width: 17.5, style: { alignment: { horizontal: 'left' }, fill: { type: 'pattern', pattern: 'solid', fgColor:{ argb: 'ffe0b2' } } } },
       { header: '指數', key: 'closePrice', width: 12.5, style: { alignment: { horizontal: 'right' }, fill: { type: 'pattern', pattern: 'solid', fgColor:{ argb: 'ffe0b2' } } } },
@@ -126,8 +146,10 @@ export class ReportService {
       { header: '比重差', key: 'tradeWeightChange', width: 12.5, style: { alignment: { horizontal: 'right' }, fill: { type: 'pattern', pattern: 'solid', fgColor:{ argb: 'ffe0b2' } } } },
     ];
 
+    // 從資料庫取得產業資金流向數據
     const data = await this.tickerRepository.getMoneyFlow(options);
 
+    // 將資料逐列輸出至工作表
     data.forEach(row => {
       row = {
         ...row,
@@ -141,6 +163,7 @@ export class ReportService {
         tradeWeightChange: row.tradeWeightChange && numeral(row.tradeWeightChange).divide(100).value(),
       };
 
+      // 設定工作表行列及儲存格資料格式
       const dataRow = worksheet.addRow(row);
       dataRow.getCell('closePrice').style = { numFmt: '##0.00', font: { color: { argb: getFontColorByNetChange(row.change) } } };
       dataRow.getCell('change').style = { numFmt: '##0.00', font: { color: { argb: getFontColorByNetChange(row.change) } } };
@@ -155,6 +178,7 @@ export class ReportService {
       dataRow.height = 20;
     });
 
+    // 設定工作表名稱
     const market = getMarketName(options.market);
     worksheet.name = `${market}資金流向`;
     worksheet.getRow(1).alignment = { vertical: 'middle', horizontal: 'center' };
@@ -166,6 +190,7 @@ export class ReportService {
   async addTopMoversSheet(workbook: ExcelJS.Workbook, options: { date: string, market: Market }) {
     const worksheet = workbook.addWorksheet();
 
+    // 設定工作表欄位格式
     worksheet.columns = [
       { header: '代號', key: 'gainerSymbol', width: 10 },
       { header: '股票', key: 'gainerName', width: 15 },
@@ -182,10 +207,12 @@ export class ReportService {
       { header: '成交量(張)', key: 'loserTradeVolume', width: 12, style: { alignment: { horizontal: 'right' } } },
     ];
 
+    // 從資料庫取得個股漲跌幅排行數據
     const gainers = await this.tickerRepository.getTopMovers({ ...options, direction: 'up' });
     const losers = await this.tickerRepository.getTopMovers({ ...options, direction: 'down' });
     const length = Math.max(gainers.length, losers.length);
 
+    // 將資料逐列輸出至工作表
     Array(length).fill({}).forEach((row, i) => {
       row = {
         gainerSymbol: gainers[i]?.symbol,
@@ -202,6 +229,7 @@ export class ReportService {
         loserTradeVolume: losers[i]?.tradeVolume && numeral(losers[i].tradeVolume).divide(1000).value(),
       }
 
+      // 設定工作表行列及儲存格資料格式
       const dataRow = worksheet.addRow(row);
       dataRow.getCell('gainerClosePrice').style = { numFmt: '#0.00', font: { color: { argb: getFontColorByNetChange(gainers[i]?.change) } } };
       dataRow.getCell('gainerChange').style = { numFmt: '#0.00', font: { color: { argb: getFontColorByNetChange(gainers[i]?.change) } } };
@@ -215,6 +243,7 @@ export class ReportService {
       dataRow.height = 20;
     });
 
+    // 工作表首列格式設定
     const headerRow = worksheet.insertRow(1, ['漲幅排行', '', '', '', '', '', '', '跌幅排行', '', '', '', '', '']);
     const titleGainersCell = headerRow.getCell(1);
     const titleLosersCell = headerRow.getCell(8);
@@ -225,6 +254,7 @@ export class ReportService {
     headerRow.alignment = { vertical: 'middle', horizontal: 'center' };
     headerRow.height = 20;
 
+    // 設定工作表名稱
     const market = getMarketName(options.market);
     worksheet.name = `${market}漲跌幅排行`;
     worksheet.getRow(2).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'ffffff' } };
@@ -235,6 +265,7 @@ export class ReportService {
   async addMostActivesSheet(workbook: ExcelJS.Workbook, options: { date: string, market: Market }) {
     const worksheet = workbook.addWorksheet();
 
+    // 設定工作表欄位格式
     worksheet.columns = [
       { header: '代號', key: 'volumeSymbol', width: 10 },
       { header: '股票', key: 'volumeName', width: 15 },
@@ -251,10 +282,12 @@ export class ReportService {
       { header: '成交值(億)', key: 'valueTradeValue', width: 12, style: { alignment: { horizontal: 'right' } } },
     ];
 
+    // 從資料庫取得個股成交量值排行數據
     const mostActivesByVolume = await this.tickerRepository.getMostActives({ ...options, trade: 'volume' });
     const mostActivesByValue = await this.tickerRepository.getMostActives({ ...options, trade: 'value' });
-    const length = mostActivesByVolume.length
+    const length = mostActivesByVolume.length;
 
+    // 將資料逐列輸出至工作表
     Array(length).fill({}).forEach((row, i) => {
       row = {
         volumeSymbol: mostActivesByVolume[i]?.symbol,
@@ -271,6 +304,7 @@ export class ReportService {
         valueTradeValue: mostActivesByValue[i]?.tradeValue && numeral(mostActivesByValue[i].tradeValue).divide(100000000).value(),
       }
 
+      // 設定工作表行列及儲存格資料格式
       const dataRow = worksheet.addRow(row);
       dataRow.getCell('volumeClosePrice').style = { numFmt: '#0.00', font: { color: { argb: getFontColorByNetChange(mostActivesByVolume[i]?.change) } } };
       dataRow.getCell('volumeChange').style = { numFmt: '#0.00', font: { color: { argb: getFontColorByNetChange(mostActivesByVolume[i]?.change) } } };
@@ -284,6 +318,7 @@ export class ReportService {
       dataRow.height = 20;
     });
 
+    // 工作表首列格式設定
     const headerRow = worksheet.insertRow(1, ['成交量排行', '', '', '', '', '', '', '成交值排行', '', '', '', '', '']);
     const titleMostActivesByVolumeCell = headerRow.getCell(1);
     const titleMostActivesByValueCell = headerRow.getCell(8);
@@ -294,6 +329,7 @@ export class ReportService {
     headerRow.alignment = { vertical: 'middle', horizontal: 'center' };
     headerRow.height = 20;
 
+    // 設定工作表名稱
     const market = getMarketName(options.market);
     worksheet.name = `${market}成交量值排行`;
     worksheet.getRow(2).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'ffffff' } };
@@ -304,6 +340,7 @@ export class ReportService {
   async addInstInvestorsTradesSheet(workbook: ExcelJS.Workbook, options: { date: string, market: Market }) {
     const worksheet = workbook.addWorksheet();
 
+    // 設定工作表欄位格式
     worksheet.columns = [
       { header: '代號', key: 'finiNetBuySymbol', width: 10 },
       { header: '股票', key: 'finiNetBuyName', width: 15 },
@@ -334,13 +371,14 @@ export class ReportService {
       { header: '成交量(張)', key: 'sitcNetSellTotalVolume', width: 12, style: { alignment: { horizontal: 'right' } } },
     ];
 
+    // 從資料庫取得個股外資投信買賣超排行數據
     const finiNetBuyList = await this.tickerRepository.getInstInvestorsTrades({ ...options, inst: 'fini', net: 'buy' });
     const finiNetSellList = await this.tickerRepository.getInstInvestorsTrades({ ...options, inst: 'fini', net: 'sell' });
     const sitcNetBuyList = await this.tickerRepository.getInstInvestorsTrades({ ...options, inst: 'sitc', net: 'buy' });
     const sitcNetSellList = await this.tickerRepository.getInstInvestorsTrades({ ...options, inst: 'sitc', net: 'sell' });
-
     const length = Math.max(finiNetBuyList.length, finiNetSellList.length, sitcNetBuyList.length, sitcNetSellList.length);
 
+    // 將資料逐列輸出至工作表
     Array(length).fill({}).forEach((row, i) => {
       row = {
         finiNetBuySymbol: finiNetBuyList[i]?.symbol,
@@ -369,6 +407,7 @@ export class ReportService {
         sitcNetSellTotalVolume: sitcNetSellList[i]?.tradeVolume && numeral(sitcNetSellList[i].tradeVolume).divide(1000).value(),
       }
 
+      // 設定工作表行列及儲存格資料格式
       const dataRow = worksheet.addRow(row);
       dataRow.getCell('finiNetBuyVolume').style = { numFmt: '#,##0' };
       dataRow.getCell('finiNetBuyClosePrice').style = { numFmt: '#0.00', font: { color: { argb: getFontColorByNetChange(finiNetBuyList[i]?.change) } } };
@@ -390,6 +429,7 @@ export class ReportService {
       dataRow.height = 20;
     });
 
+    // 工作表首列格式設定
     const headerRow = worksheet.insertRow(1, ['外資買超', '', '', '', '', '', '', '外資賣超', '', '', '', '', '', '', '投信買超', '', '', '', '', '', '', '投信賣超', '', '', '', '', '']);
     const titlefiniNetBuyCell = headerRow.getCell(1);
     const titlefiniNetSellCell = headerRow.getCell(8);
@@ -406,6 +446,7 @@ export class ReportService {
     headerRow.alignment = { vertical: 'middle', horizontal: 'center' };
     headerRow.height = 20;
 
+    // 設定工作表名稱
     const market = getMarketName(options.market);
     worksheet.name = `${market}外資投信買賣超排行`;
     worksheet.getRow(2).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'ffffff' } };
