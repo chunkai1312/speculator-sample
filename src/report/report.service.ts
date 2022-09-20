@@ -162,4 +162,73 @@ export class ReportService {
 
     return workbook;
   }
+
+  async addTopMoversSheet(workbook: ExcelJS.Workbook, options: { date: string, market: Market }) {
+    const worksheet = workbook.addWorksheet();
+
+    worksheet.columns = [
+      { header: '代號', key: 'gainerSymbol', width: 10 },
+      { header: '股票', key: 'gainerName', width: 15 },
+      { header: '股價', key: 'gainerClosePrice', width: 8, style: { alignment: { horizontal: 'right' } } },
+      { header: '漲跌', key: 'gainerChange', width: 8, style: { alignment: { horizontal: 'right' } } },
+      { header: '漲跌幅', key: 'gainerChangePercent', width: 8, style: { alignment: { horizontal: 'right' } } },
+      { header: '成交量(張)', key: 'gainerTradeVolume', width: 12, style: { alignment: { horizontal: 'right' } } },
+      { header: '', key: '', width: 8 },
+      { header: '代號', key: 'loserSymbol', width: 10 },
+      { header: '股票', key: 'loserName', width: 15 },
+      { header: '股價', key: 'loserClosePrice', width: 8, style: { alignment: { horizontal: 'right' } } },
+      { header: '漲跌', key: 'loserChange', width: 8, style: { alignment: { horizontal: 'right' } } },
+      { header: '漲跌幅', key: 'loserChangePercent', width: 8, style: { alignment: { horizontal: 'right' } } },
+      { header: '成交量(張)', key: 'loserTradeVolume', width: 12, style: { alignment: { horizontal: 'right' } } },
+    ];
+
+    const gainers = await this.tickerRepository.getTopMovers({ ...options, direction: 'up' });
+    const losers = await this.tickerRepository.getTopMovers({ ...options, direction: 'down' });
+    const length = Math.max(gainers.length, losers.length);
+
+    Array(length).fill({}).forEach((row, i) => {
+      row = {
+        gainerSymbol: gainers[i]?.symbol,
+        gainerName: gainers[i]?.name,
+        gainerClosePrice: gainers[i]?.closePrice,
+        gainerChange: gainers[i]?.change,
+        gainerChangePercent: gainers[i]?.changePercent && numeral(gainers[i].changePercent).divide(100).value(),
+        gainerTradeVolume: gainers[i]?.tradeVolume && numeral(gainers[i].tradeVolume).divide(1000).value(),
+        loserSymbol: losers[i]?.symbol,
+        loserName: losers[i]?.name,
+        loserClosePrice: losers[i]?.closePrice,
+        loserChange: losers[i]?.change,
+        loserChangePercent: losers[i]?.changePercent && numeral(losers[i].changePercent).divide(100).value(),
+        loserTradeVolume: losers[i]?.tradeVolume && numeral(losers[i].tradeVolume).divide(1000).value(),
+      }
+
+      const dataRow = worksheet.addRow(row);
+      dataRow.getCell('gainerClosePrice').style = { numFmt: '#0.00', font: { color: { argb: getFontColorByNetChange(gainers[i]?.change) } } };
+      dataRow.getCell('gainerChange').style = { numFmt: '#0.00', font: { color: { argb: getFontColorByNetChange(gainers[i]?.change) } } };
+      dataRow.getCell('gainerChangePercent').style = { numFmt: '#0.00%', font: { color: { argb: getFontColorByNetChange(gainers[i]?.change) } } };
+      dataRow.getCell('gainerTradeVolume').style = { numFmt: '#,##0' };
+      dataRow.getCell('loserClosePrice').style = { numFmt: '#0.00', font: { color: { argb: getFontColorByNetChange(losers[i]?.change) } } };
+      dataRow.getCell('loserChange').style = { numFmt: '#0.00', font: { color: { argb: getFontColorByNetChange(losers[i]?.change) } } };
+      dataRow.getCell('loserChangePercent').style = { numFmt: '#0.00%', font: { color: { argb: getFontColorByNetChange(losers[i]?.change) } } };
+      dataRow.getCell('loserTradeVolume').style = { numFmt: '#,##0' };
+      dataRow.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'ffffff' } };
+      dataRow.height = 20;
+    });
+
+    const headerRow = worksheet.insertRow(1, ['漲幅排行', '', '', '', '', '', '', '跌幅排行', '', '', '', '', '']);
+    const titleGainersCell = headerRow.getCell(1);
+    const titleLosersCell = headerRow.getCell(8);
+    titleGainersCell.style = { alignment: { horizontal: 'center' }, fill: { type: 'pattern', pattern: 'solid', fgColor: { argb: 'ffe0b2' } } };
+    titleLosersCell.style = { alignment: { horizontal: 'center' }, fill: { type: 'pattern', pattern: 'solid', fgColor: { argb: 'ffe0b2' } } };
+    worksheet.mergeCells(+titleGainersCell.row, +titleGainersCell.col, +titleGainersCell.row, +titleGainersCell.col + 5)
+    worksheet.mergeCells(+titleLosersCell.row, +titleLosersCell.col, +titleLosersCell.row, +titleLosersCell.col + 5)
+    headerRow.alignment = { vertical: 'middle', horizontal: 'center' };
+    headerRow.height = 20;
+
+    const market = getMarketName(options.market);
+    worksheet.name = `${market}漲跌幅排行`;
+    worksheet.getRow(2).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'ffffff' } };
+
+    return workbook;
+  }
 }
