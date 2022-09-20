@@ -47,4 +47,31 @@ export class TickerRepository {
 
     return data;
   }
+
+  async getTopMovers(options?: { date?: string, market?: Market, direction?: 'up' | 'down', top?: number }) {
+    const date = options?.date || DateTime.local().toISODate();
+    const market = options?.market || Market.TSE;
+    const direction = options?.direction || 'up';
+    const top = options?.top || 50;
+
+    const results = await this.model.aggregate([
+      { $match: {
+          date: { $lte: date },
+          type: TickerType.Equity,
+          market: market || { $ne: null },
+          changePercent: (direction === 'down') ? { $lt: 0 } : { $gt: 0 },
+        },
+      },
+      { $project: { _id: 0, __v: 0, createdAt: 0 , updatedAt: 0 } },
+      { $sort: { date: -1, changePercent: (direction === 'down') ? 1 : -1 } },
+      { $group: { _id: '$date', data: { $push: '$$ROOT' } } },
+      { $sort: { _id: -1 } },
+      { $limit: 1 },
+    ]);
+
+    const [ tickers ] = results.map(doc => doc.data);
+    const data = tickers.slice(0, top);
+
+    return data;
+  }
 }
