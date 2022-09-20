@@ -1,13 +1,16 @@
 import * as ExcelJS from 'exceljs';
 import * as numeral from 'numeral';
 import { Injectable } from '@nestjs/common';
+import { Market, getMarketName, getSectorName } from '@speculator/common';
 import { MarketStatsRepository } from '../market-stats/market-stats.repository';
+import { TickerRepository } from '../ticker/ticker.repository';
 import { getFontColorByNetChange } from './utils';
 
 @Injectable()
 export class ReportService {
   constructor(
     private readonly marketStatsRepository: MarketStatsRepository,
+    private readonly tickerRepository: TickerRepository,
   ) {}
 
   async createWorkbook() {
@@ -103,6 +106,59 @@ export class ReportService {
 
     const date = data[0].date.replace(/-/g, '');
     worksheet.name = `${date} 大盤籌碼`;
+
+    return workbook;
+  }
+
+  async addMoneyFlowSheet(workbook: ExcelJS.Workbook, options: { date: string, market: Market }) {
+    const worksheet = workbook.addWorksheet();
+
+    worksheet.columns = [
+      { header: '指數(類股)', key: 'name', width: 17.5, style: { alignment: { horizontal: 'left' }, fill: { type: 'pattern', pattern: 'solid', fgColor:{ argb: 'ffe0b2' } } } },
+      { header: '指數', key: 'closePrice', width: 12.5, style: { alignment: { horizontal: 'right' }, fill: { type: 'pattern', pattern: 'solid', fgColor:{ argb: 'ffe0b2' } } } },
+      { header: '漲跌', key: 'change', width: 12.5, style: { alignment: { horizontal: 'right' }, fill: { type: 'pattern', pattern: 'solid', fgColor:{ argb: 'ffe0b2' } } } },
+      { header: '漲跌幅', key: 'changePercent', width: 12.5, style: { alignment: { horizontal: 'right' }, fill: { type: 'pattern', pattern: 'solid', fgColor:{ argb: 'ffe0b2' } } } },
+      { header: '成交金額(億)', key: 'tradeValue', width: 12.5, style: { alignment: { horizontal: 'right' }, fill: { type: 'pattern', pattern: 'solid', fgColor:{ argb: 'ffe0b2' } } } },
+      { header: '昨日金額(億)', key: 'tradeValuePrev', width: 12.5, style: { alignment: { horizontal: 'right' }, fill: { type: 'pattern', pattern: 'solid', fgColor:{ argb: 'ffe0b2' } } } },
+      { header: '金額差(億)', key: 'tradeValueChange', width: 12.5, style: { alignment: { horizontal: 'right' }, fill: { type: 'pattern', pattern: 'solid', fgColor:{ argb: 'ffe0b2' } } } },
+      { header: '成交比重', key: 'tradeWeight', width: 12.5, style: { alignment: { horizontal: 'right' }, fill: { type: 'pattern', pattern: 'solid', fgColor:{ argb: 'ffe0b2' } } } },
+      { header: '昨日比重', key: 'tradeWeightPrev', width: 12.5, style: { alignment: { horizontal: 'right' }, fill: { type: 'pattern', pattern: 'solid', fgColor:{ argb: 'ffe0b2' } } } },
+      { header: '比重差', key: 'tradeWeightChange', width: 12.5, style: { alignment: { horizontal: 'right' }, fill: { type: 'pattern', pattern: 'solid', fgColor:{ argb: 'ffe0b2' } } } },
+    ];
+
+    const data = await this.tickerRepository.getMoneyFlow(options);
+
+    data.forEach(row => {
+      row = {
+        ...row,
+        name: getSectorName(row.name),
+        changePercent: row.changePercent && numeral(row.changePercent).divide(100).value(),
+        tradeValue: row.tradeValue && numeral(row.tradeValue).divide(100000000).value(),
+        tradeValuePrev: row.tradeValuePrev && numeral(row.tradeValuePrev).divide(100000000).value(),
+        tradeValueChange: row.tradeValueChange && numeral(row.tradeValueChange).divide(100000000).value(),
+        tradeWeight: row.tradeWeight && numeral(row.tradeWeight).divide(100).value(),
+        tradeWeightPrev: row.tradeWeightPrev && numeral(row.tradeWeightPrev).divide(100).value(),
+        tradeWeightChange: row.tradeWeightChange && numeral(row.tradeWeightChange).divide(100).value(),
+      };
+
+      const dataRow = worksheet.addRow(row);
+      dataRow.getCell('closePrice').style = { numFmt: '##0.00', font: { color: { argb: getFontColorByNetChange(row.change) } } };
+      dataRow.getCell('change').style = { numFmt: '##0.00', font: { color: { argb: getFontColorByNetChange(row.change) } } };
+      dataRow.getCell('changePercent').style = { numFmt: '#0.00%', font: { color: { argb: getFontColorByNetChange(row.change) } } };
+      dataRow.getCell('tradeValue').style = { numFmt: '#,##0.00' };
+      dataRow.getCell('tradeValuePrev').style = { numFmt: '#,##0.00' };
+      dataRow.getCell('tradeValueChange').style = { numFmt: '#,##0.00', font: { color: { argb: getFontColorByNetChange(row.tradeValueChange) } } };
+      dataRow.getCell('tradeWeight').style = { numFmt: '#0.00%' };
+      dataRow.getCell('tradeWeightPrev').style = { numFmt: '#0.00%' };
+      dataRow.getCell('tradeWeightChange').style = { numFmt: '#0.00%', font: { color: { argb: getFontColorByNetChange(row.tradeWeightChange) } } };
+      dataRow.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'ffffff' } };
+      dataRow.height = 20;
+    });
+
+    const market = getMarketName(options.market);
+    worksheet.name = `${market}資金流向`;
+    worksheet.getRow(1).alignment = { vertical: 'middle', horizontal: 'center' };
+    worksheet.getRow(1).height = 20;
 
     return workbook;
   }
