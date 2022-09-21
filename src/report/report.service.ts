@@ -1,6 +1,9 @@
 import * as ExcelJS from 'exceljs';
 import * as numeral from 'numeral';
-import { Injectable } from '@nestjs/common';
+import { DateTime } from 'luxon';
+import { Injectable, Logger } from '@nestjs/common';
+import { Cron } from '@nestjs/schedule';
+import { MailerService } from '@nestjs-modules/mailer';
 import { Market, getMarketName, getSectorName } from '@speculator/common';
 import { MarketStatsRepository } from '../market-stats/market-stats.repository';
 import { TickerRepository } from '../ticker/ticker.repository';
@@ -9,9 +12,24 @@ import { getFontColorByNetChange } from './utils';
 @Injectable()
 export class ReportService {
   constructor(
+    private readonly mailerService: MailerService,
     private readonly marketStatsRepository: MarketStatsRepository,
     private readonly tickerRepository: TickerRepository,
   ) {}
+
+  @Cron('0 0 22 * * *')
+  async sendReport(options?: { date: string }) {
+    const dt = options?.date ? DateTime.fromISO(options.date) : DateTime.local();
+    const content = await this.export({ date: dt.toISODate() });
+    const date = dt.toFormat('yyyyMMdd');
+    const subject = `${date} 盤後報告`;
+    const filename = `${date}_盤後報告.xlsx`;
+    const attachments = [{ filename, content }];
+
+    await this.mailerService.sendMail({ subject, attachments })
+      .then(() => Logger.log(`"${subject}" 已寄出`, ReportService.name))
+      .catch((err) => Logger.error(err.message, err.stack, ReportService.name));
+  }
 
   async export(options: { date: string }): Promise<ExcelJS.Buffer> {
     const workbook = await this.createWorkbook();
