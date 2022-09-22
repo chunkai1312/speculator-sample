@@ -21,6 +21,7 @@
     "test:e2e": "jest --config ./apps/scraper/test/jest-e2e.json"
   },
   "dependencies": {
+    "@liaoliaots/nestjs-redis": "^8.2.2",
     "@nestjs-modules/mailer": "^1.8.1",
     "@nestjs/axios": "^0.1.0",
     "@nestjs/common": "^8.0.0",
@@ -33,9 +34,11 @@
     "csvtojson": "^2.0.10",
     "exceljs": "^4.3.0",
     "iconv-lite": "^0.6.3",
+    "ioredis": "^5.2.3",
     "lodash": "^4.17.21",
     "luxon": "^3.0.3",
     "mongoose": "^6.6.1",
+    "nest-line-notify": "^0.1.0",
     "nodemailer": "^6.7.8",
     "numeral": "^2.0.6",
     "reflect-metadata": "^0.1.13",
