@@ -1,5 +1,6 @@
 import { DateTime } from 'luxon';
 import { find } from 'lodash';
+import { SMA } from 'technicalindicators';
 import { Model } from 'mongoose';
 import { Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
@@ -127,6 +128,43 @@ export class TickerRepository {
 
     const [ tickers ] = results.map(doc => doc.data);
     const data = tickers.slice(0, top);
+
+    return data;
+  }
+
+  async getTickerSMAs(symbol: string, options?: { date?: string, days?: number }) {
+    const date = options?.date || DateTime.local().toISODate();
+    const days = options?.days || 60;
+
+    const results = await this.model.aggregate([
+      { $match: { symbol, date: { $lte: date } }},
+      { $sort: { date: -1 } },
+      { $project: {
+        _id: 0,
+        date: 1,
+        open: '$openPrice',
+        high: '$highPrice',
+        low: '$lowPrice',
+        close: '$closePrice',
+        volume: '$tradeVolume' },
+      },
+      { $limit: days },
+    ]);
+
+    const values = results.map(data => data.close);
+
+    const sma5 = SMA.calculate({ period: 5 , values });
+    const sma10 = SMA.calculate({ period: 10 , values });
+    const sma20 = SMA.calculate({ period: 20 , values });
+    const sma60 = SMA.calculate({ period: 60 , values });
+
+    const data = results.map((ticker, i) => ({
+      ...ticker,
+      sma5: sma5[i],
+      sma10: sma10[i],
+      sma20: sma20[i],
+      sma60: sma60[i],
+    }));
 
     return data;
   }
