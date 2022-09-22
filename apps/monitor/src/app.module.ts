@@ -3,6 +3,7 @@ import { ConfigModule } from '@nestjs/config';
 import { MongooseModule } from '@nestjs/mongoose';
 import { RedisModule } from '@liaoliaots/nestjs-redis';
 import { LineNotifyModule } from 'nest-line-notify';
+import { MonitorModule } from './monitor/monitor.module';
 
 @Module({
   imports: [
@@ -14,6 +15,7 @@ import { LineNotifyModule } from 'nest-line-notify';
     LineNotifyModule.forRoot({
       accessToken: process.env.LINE_NOTIFY_ACCESS_TOKEN,
     }),
+    MonitorModule,
   ],
 })
 export class AppModule {}
