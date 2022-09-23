@@ -4,6 +4,7 @@ import { FugleRealtimeModule } from '@fugle/realtime-nest';
 import { Monitor, MonitorSchema } from './monitor.schema';
 import { MonitorRepository } from './monitor.repository';
 import { MonitorService } from './monitor.service';
+import { MonitorController } from './monitor.controller';
 
 @Module({
   imports: [
@@ -17,5 +18,6 @@ import { MonitorService } from './monitor.service';
     }),
   ],
   providers: [MonitorRepository, MonitorService],
+  controllers: [MonitorController],
 })
 export class MonitorModule {}
