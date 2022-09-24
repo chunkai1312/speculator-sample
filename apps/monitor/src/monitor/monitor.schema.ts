@@ -19,6 +19,9 @@ export class Monitor {
     message: { type: String }
   }))
   alert: Record<string, string>;
+
+  @Prop({ default: false })
+  triggered: boolean;
 }
 
 export const MonitorSchema = SchemaFactory.createForClass(Monitor);

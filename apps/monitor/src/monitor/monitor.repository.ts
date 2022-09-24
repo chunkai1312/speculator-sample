@@ -11,11 +11,18 @@ export class MonitorRepository {
   ) {}
 
   async getMonitors(): Promise<MonitorDocument[]> {
-    return this.model.find();
+    return this.model.find({ triggered: false });
+  }
+
+  async triggerMonitor(id: string): Promise<void> {
+    await this.model.updateOne({ _id: id }, { triggered: true });
   }
 
   async getAlerts(): Promise<MonitorDocument[]> {
-    return this.model.find({ alert: { $exists: true } });
+    return this.model
+      .find({ alert: { $exists: true } })
+      .select('-__v -createdAt -updatedAt')
+      .lean();
   }
 
   async createAlert(createAlertDto: CreateAlertDto): Promise<MonitorDocument> {
@@ -25,11 +32,14 @@ export class MonitorRepository {
     return this.model.create(monitor);
   }
 
-  async getAlertById(id: string): Promise<MonitorDocument> {
-    return this.model.findOne({ _id: id, alert: { $exists: true } });
+  async getAlert(id: string): Promise<MonitorDocument> {
+    return this.model
+      .findOne({ _id: id, alert: { $exists: true } })
+      .select('-__v -createdAt -updatedAt')
+      .lean();
   }
 
-  async removeAlertById(id: string): Promise<void> {
+  async removeAlert(id: string): Promise<void> {
     await this.model.deleteOne({ _id: id, alert: { $exists: true } });
   }
 }
