@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { FugleTradeModule } from '@fugle/trade-nest';
 import { LineNotifyModule } from 'nest-line-notify';
+import { IpFilter } from 'nestjs-ip-filter';
 import { TraderModule } from './trader/trader.module';
 
 @Module({
@@ -20,6 +21,9 @@ import { TraderModule } from './trader/trader.module';
     }),
     LineNotifyModule.forRoot({
       accessToken: process.env.LINE_NOTIFY_ACCESS_TOKEN,
+    }),
+    IpFilter.register({
+      whitelist: String(process.env.ALLOWED_IPS).split(','),
     }),
     TraderModule,
   ],
