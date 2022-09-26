@@ -1,9 +1,11 @@
 import { Injectable, Logger, InternalServerErrorException, NotFoundException } from '@nestjs/common';
 import { InjectFugleTrade, Streamer } from '@fugle/trade-nest';
+import { InjectLineNotify, LineNotify } from 'nest-line-notify';
 import { FugleTrade, Order, OrderPayload } from '@fugle/trade';
 import { PlaceOrderDto } from './dto/place-order.dto';
 import { ReplaceOrderDto } from './dto/replace-order.dto';
 import { GetTransactionsDto } from './dto/get-transactions.dto';
+import { getOrderSideName, getOrderTypeName, getTradeTypeName, getPriceTypeName } from './utils/get-names.util';
 
 @Injectable()
 export class TraderService {
@@ -11,7 +13,8 @@ export class TraderService {
 
   constructor(
     @InjectFugleTrade() private readonly fugle: FugleTrade,
-  ) {}
+    @InjectLineNotify() private readonly lineNotify: LineNotify,
+  ) { }
 
   async getOrders() {
     return this.fugle.getOrders()
@@ -96,13 +99,67 @@ export class TraderService {
   }
 
   @Streamer.OnOrder()
-  async onOrder(message) {
-    this.logger.log(`Streamer.OnOrder ${JSON.stringify(message)}`);
+  async onOrder(data) {
+    this.logger.log(`Streamer.OnOrder ${JSON.stringify(data)}`);
+
+    const { action, stockNo, buySell, bsFlag, trade, odPrice, orgQty, afterQty, apCode, priceFlag } = data;
+    const actionName = action === 'M' ? '改量' : action === 'C' ? '刪單' : action === 'R' ? '改價' : '委託';
+    const side = getOrderSideName(buySell);
+    const orderType = getOrderTypeName(bsFlag) || '';
+    const tradeType = getTradeTypeName(trade);
+    const isOddLot = apCode === Order.ApCode.Odd || apCode === Order.ApCode.Emg || apCode === Order.ApCode.IntradayOdd;
+
+    const price = (() => {
+      const price = Number(odPrice);
+      if (action === 'R') return '';
+      if (apCode === Order.ApCode.AfterMarket) return '收盤價';
+      return (price === 0) ? getPriceTypeName(priceFlag) : price;
+    })();
+
+    const priceUnit = (action === 'R' || Number(odPrice) === 0) ? '' : '元';
+    const size = action === 'O' ? Number(orgQty) : Number(afterQty);
+    const sizeUnit: string = isOddLot ? '股' : '張';
+
+    const info = (() => {
+      const actions = {
+        '刪單': '已刪單',
+        '改量': `已改為 ${size} ${sizeUnit}`,
+        '改價': `已改為 ${Number(odPrice)} 元`,
+        '委託': `${size} ${sizeUnit}`,
+      };
+      return actions[actionName];
+    })();
+
+    const message = [
+      '',
+      `<<委託回報>>`,
+      `${stockNo}：${price} ${priceUnit} ${orderType} ${tradeType} ${side} ${info}`,
+    ].join('\n');
+
+    await this.lineNotify.send({ message })
+      .catch((err) => this.logger.error(err.message, err.stack));
   }
 
   @Streamer.OnTrade()
-  async onTrade(message) {
-    this.logger.log(`Streamer.OnTrade ${JSON.stringify(message)}`);
+  async onTrade(data) {
+    this.logger.log(`Streamer.OnTrade ${JSON.stringify(data)}`);
+
+    const { stockNo, buySell, trade, matPrice, matQty } = data;
+    const side = getOrderSideName(buySell);
+    const tradeType = getTradeTypeName(trade);
+    const price: string | number = Number(matPrice);
+    const priceUnit: string = price === 0 ? '' : '元';
+    const size = Number(matQty);
+    const sizeUnit = '股';
+
+    const message = [
+      '',
+      `<<成交回報>>`,
+      `${stockNo}：${price} ${priceUnit} ${tradeType} ${side} ${size} ${sizeUnit} 已成交`,
+    ].join('\n');
+
+    await this.lineNotify.send({ message })
+      .catch((err) => this.logger.error(err.message, err.stack));
   }
 
   @Streamer.OnError()
