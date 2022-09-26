@@ -23,6 +23,8 @@
   "dependencies": {
     "@fugle/realtime": "^0.3.4",
     "@fugle/realtime-nest": "^0.3.1",
+    "@fugle/trade": "^0.3.1",
+    "@fugle/trade-nest": "^0.1.2",
     "@liaoliaots/nestjs-redis": "^8.2.2",
     "@nestjs-modules/mailer": "^1.8.1",
     "@nestjs/axios": "^0.1.0",
