@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { FugleTradeModule } from '@fugle/trade-nest';
 import { LineNotifyModule } from 'nest-line-notify';
+import { TraderModule } from './trader/trader.module';
 
 @Module({
   imports: [
@@ -20,6 +21,7 @@ import { LineNotifyModule } from 'nest-line-notify';
     LineNotifyModule.forRoot({
       accessToken: process.env.LINE_NOTIFY_ACCESS_TOKEN,
     }),
+    TraderModule,
   ],
 })
 export class AppModule {}
