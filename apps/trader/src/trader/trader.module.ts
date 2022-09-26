@@ -1,4 +1,7 @@
 import { Module } from '@nestjs/common';
+import { TraderService } from './trader.service';
 
-@Module({})
+@Module({
+  providers: [TraderService]
+})
 export class TraderModule {}
