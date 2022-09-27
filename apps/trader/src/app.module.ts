@@ -4,6 +4,7 @@ import { FugleTradeModule } from '@fugle/trade-nest';
 import { LineNotifyModule } from 'nest-line-notify';
 import { IpFilter } from 'nestjs-ip-filter';
 import { TraderModule } from './trader/trader.module';
+import { PlanModule } from './plan/plan.module';
 
 @Module({
   imports: [
@@ -26,6 +27,7 @@ import { TraderModule } from './trader/trader.module';
       whitelist: String(process.env.ALLOWED_IPS).split(','),
     }),
     TraderModule,
+    PlanModule,
   ],
 })
 export class AppModule {}
