@@ -1,5 +1,7 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
+import { ScheduleModule } from '@nestjs/schedule';
+import { MongooseModule } from '@nestjs/mongoose';
 import { FugleTradeModule } from '@fugle/trade-nest';
 import { LineNotifyModule } from 'nest-line-notify';
 import { IpFilter } from 'nestjs-ip-filter';
@@ -9,6 +11,8 @@ import { PlanModule } from './plan/plan.module';
 @Module({
   imports: [
     ConfigModule.forRoot(),
+    ScheduleModule.forRoot(),
+    MongooseModule.forRoot(process.env.MONGODB_URI),
     FugleTradeModule.forRoot({
       config: {
         apiUrl: process.env.FUGLE_TRADE_API_URL,
