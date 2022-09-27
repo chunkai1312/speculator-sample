@@ -10,7 +10,10 @@ import { MonitorModule } from './monitor/monitor.module';
     ConfigModule.forRoot(),
     MongooseModule.forRoot(process.env.MONGODB_URI),
     RedisModule.forRoot({
-      config: { url: process.env.REDIS_URL },
+      config: {
+        host: process.env.REDIS_HOST,
+        port: +process.env.REDIS_PORT,
+      },
     }),
     LineNotifyModule.forRoot({
       accessToken: process.env.LINE_NOTIFY_ACCESS_TOKEN,

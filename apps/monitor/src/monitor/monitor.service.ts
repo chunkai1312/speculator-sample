@@ -1,20 +1,24 @@
 import { omit } from 'lodash';
 import { DateTime } from 'luxon';
 import { Redis } from 'ioredis';
-import { Injectable, Logger, OnApplicationBootstrap, NotFoundException, ForbiddenException } from '@nestjs/common';
+import { Injectable, Inject, Logger, OnApplicationBootstrap, NotFoundException, ForbiddenException } from '@nestjs/common';
+import { ClientProxy } from '@nestjs/microservices';
 import { InjectRedis } from '@liaoliaots/nestjs-redis';
 import { InjectWebSocketClient } from '@fugle/realtime-nest';
 import { InjectLineNotify, LineNotify } from 'nest-line-notify';
 import { WebSocketClient } from '@fugle/realtime';
+import { TRADER_SERVICE } from '@speculator/common';
 import { MonitorRepository } from './monitor.repository';
 import { MonitorDocument } from './monitor.schema';
 import { CreateAlertDto } from './dto/create-alert.dto';
+import { CreateOrderDto } from './dto/create-order.dto';
 
 @Injectable()
 export class MonitorService implements OnApplicationBootstrap {
   private readonly sockets = new Map<string, WebSocket>();
 
   constructor(
+    @Inject(TRADER_SERVICE) private readonly traderService: ClientProxy,
     @InjectRedis() private readonly redis: Redis,
     @InjectWebSocketClient() private readonly client: WebSocketClient,
     @InjectLineNotify() private readonly lineNotify: LineNotify,
@@ -48,6 +52,31 @@ export class MonitorService implements OnApplicationBootstrap {
     // 移除監控設定並刪除到價提醒
     await this.removeMonitor(monitor);
     return this.monitorRepository.removeAlert(id);
+  }
+
+  async getOrders() {
+    // 取得所有觸價委託
+    return this.monitorRepository.getOrders();
+  }
+
+  async createOrder(createOrderDto: CreateOrderDto) {
+    // 建立觸價委託並進行監控
+    const monitor = await this.monitorRepository.createOrder(createOrderDto);
+    await this.makeMonitoring(monitor);
+    return omit(monitor.toJSON(), ['__v', 'createdAt', 'updatedAt']);
+  }
+
+  async removeOrder(id) {
+    const monitor = await this.monitorRepository.getOrder(id);
+
+    // 若不存在則回傳 404 錯誤
+    if (!monitor) {
+      throw new NotFoundException('order not found');
+    }
+
+    // 移除監控設定並刪除觸價委託
+    await this.removeMonitor(monitor);
+    return this.monitorRepository.removeOrder(id);
   }
 
   private async removeMonitor(monitor: MonitorDocument) {
@@ -119,6 +148,9 @@ export class MonitorService implements OnApplicationBootstrap {
 
       // 若監控設定包含 alert 則推播訊息
       if (monitor.alert) await this.sendAlert(monitor, message.data.quote);
+
+      // 若監控設定包含 order 則下單委託
+      if (monitor.order) await this.placeOrder(monitor, message.data.quote);
     }
   }
 
@@ -135,6 +167,29 @@ export class MonitorService implements OnApplicationBootstrap {
       `成交量: ${quote.total.tradeVolume}`,
       `時間: ${time}`,
     ].join('\n');
+
+    // 透過 LINE Notify 推播訊息並將監控設定更新為已觸發
+    await this.lineNotify.send({ message })
+      .then(() => this.monitorRepository.triggerMonitor(_id))
+      .catch((err) => Logger.error(err.message, err.stack, MonitorService.name));
+  }
+
+  private async placeOrder(monitor: MonitorDocument, quote: any) {
+    const { _id, symbol, order } = monitor;
+    const time = DateTime.fromISO(quote.trade.at).toFormat('yyyy/MM/dd HH:mm:ss');
+
+    // 設定推播訊息
+    const message = [
+      '',
+      `<<觸價委託>>`,
+      `股票代號: ${symbol}`,
+      `成交價: ${quote.trade.price}`,
+      `成交量: ${quote.total.tradeVolume}`,
+      `時間: ${time}`,
+    ].join('\n');
+
+    // 透過 Trader Service 進行下單委託
+    this.traderService.emit('place-order', order);
 
     // 透過 LINE Notify 推播訊息並將監控設定更新為已觸發
     await this.lineNotify.send({ message })

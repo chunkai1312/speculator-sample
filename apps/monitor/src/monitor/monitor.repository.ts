@@ -3,6 +3,7 @@ import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { Monitor, MonitorDocument } from './monitor.schema';
 import { CreateAlertDto } from './dto/create-alert.dto';
+import { CreateOrderDto } from './dto/create-order.dto';
 
 @Injectable()
 export class MonitorRepository {
@@ -41,5 +42,28 @@ export class MonitorRepository {
 
   async removeAlert(id: string): Promise<void> {
     await this.model.deleteOne({ _id: id, alert: { $exists: true } });
+  }
+
+  async getOrders(): Promise<MonitorDocument[]> {
+    return this.model.find({ order: { $exists: true } })
+      .select('-__v -createdAt -updatedAt')
+      .lean();
+  }
+
+  async createOrder(createOrderDto: CreateOrderDto): Promise<MonitorDocument> {
+    const { order, ...monitorable } = createOrderDto;
+    const monitor = { ...monitorable, order: JSON.parse(order) }
+    return this.model.create(monitor);
+  }
+
+  async getOrder(id: string): Promise<MonitorDocument> {
+    return this.model
+      .findOne({ _id: id, order: { $exists: true } })
+      .select('-__v -createdAt -updatedAt')
+      .lean();
+  }
+
+  async removeOrder(id: string): Promise<void> {
+    await this.model.deleteOne({ _id: id, order: { $exists: true } });
   }
 }
