@@ -4,6 +4,7 @@ import { FugleRealtimeModule } from '@fugle/realtime-nest';
 import { Plan, PlanSchema } from './plan.schema';
 import { PlanRepository } from './plan.repository';
 import { PlanService } from './plan.service';
+import { PlanController } from './plan.controller';
 
 @Module({
   imports: [
@@ -17,5 +18,6 @@ import { PlanService } from './plan.service';
     }),
   ],
   providers: [PlanRepository, PlanService],
+  controllers: [PlanController],
 })
 export class PlanModule {}
