@@ -1,4 +1,5 @@
 import { Controller, Get, Post, Put, Delete, Body, Param, Query } from '@nestjs/common';
+import { EventPattern, Payload } from '@nestjs/microservices';
 import { TraderService } from './trader.service';
 import { PlaceOrderDto } from './dto/place-order.dto';
 import { ReplaceOrderDto } from './dto/replace-order.dto';
@@ -41,5 +42,10 @@ export class TraderController {
   @Get('/settlements')
   async getSettlements() {
     return this.traderService.getSettlements();
+  }
+
+  @EventPattern('place-order')
+  async handleOrder(@Payload() placeOrderDto) {
+    return this.traderService.placeOrder(placeOrderDto);
   }
 }
