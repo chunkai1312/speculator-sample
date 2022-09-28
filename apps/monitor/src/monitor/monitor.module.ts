@@ -8,7 +8,6 @@ import { MonitorRepository } from './monitor.repository';
 import { MonitorService } from './monitor.service';
 import { MonitorController } from './monitor.controller';
 
-
 @Module({
   imports: [
     ClientsModule.registerAsync([{

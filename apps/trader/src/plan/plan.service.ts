@@ -1,3 +1,4 @@
+import { omit } from 'lodash';
 import { DateTime } from 'luxon';
 import { Injectable } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
@@ -21,7 +22,8 @@ export class PlanService {
   }
 
   async createPlan(createPlanDto: CreatePlanDto) {
-    return this.PlanRepository.createPlan(createPlanDto);
+    const plan = await this.PlanRepository.createPlan(createPlanDto);
+    return omit(plan.toJSON(), ['__v', 'createdAt', 'updatedAt']);
   }
 
   async removePlan(id: string) {
