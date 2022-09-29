@@ -1,10 +1,10 @@
 {
-  "name": "scraper",
-  "version": "0.0.1",
-  "description": "",
-  "author": "",
+  "name": "speculator",
+  "version": "0.1.0",
+  "description": "Sample project for 2022 IThome ironman",
+  "author": "Chun-Kai Wang <chunkai1312@gmail.com>",
   "private": true,
-  "license": "UNLICENSED",
+  "license": "MIT",
   "scripts": {
     "prebuild": "rimraf dist",
     "build": "nest build",
