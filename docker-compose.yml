@@ -1,0 +1,48 @@
+version: "3"
+
+services:
+  scraper:
+    build:
+      context: .
+      dockerfile: ./apps/scraper/Dockerfile
+    image: speculator/scraper:latest
+    env_file:
+      - .env
+    restart: always
+
+  monitor:
+    build:
+      context: .
+      dockerfile: ./apps/monitor/Dockerfile
+    image: speculator/monitor:latest
+    ports:
+      - "3000:3000"
+    env_file:
+      - .env
+    restart: always
+
+  trader:
+    build:
+      context: .
+      dockerfile: ./apps/trader/Dockerfile
+    image: speculator/trader:latest
+    ports:
+      - "3001:3001"
+    env_file:
+      - .env
+    volumes:
+      - ./certs:/home/node/certs
+    restart: always
+
+  mongo:
+    image: mongo:latest
+    ports:
+      - "27017:27017"
+
+  redis:
+    image: redis:latest
+    ports:
+      - "6379:6379"
+
+volumes:
+  certs:
