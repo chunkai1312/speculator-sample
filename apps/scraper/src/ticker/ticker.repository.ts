@@ -1,5 +1,4 @@
 import { DateTime } from 'luxon';
-import { find } from 'lodash';
 import { SMA } from 'technicalindicators';
 import { Model } from 'mongoose';
 import { Injectable } from '@nestjs/common';
@@ -30,23 +29,60 @@ export class TickerRepository {
           symbol: { $nin: [Index.NonElectronics, Index.NonFinance, Index.NonFinanceNonElectronics] },
         },
       },
-      { $project: { _id: 0, __v: 0, createdAt: 0 , updatedAt: 0 } },
+      { $project: { _id: 0, __v: 0, createdAt: 0, updatedAt: 0 } },
       { $group: { _id: '$date', data: { $push: '$$ROOT' } } },
-      { $sort: { _id: -1 } },
+      { $sort: { _id: -1, symbol: 1 } },
       { $limit: 2 },
+      { $unwind: '$data' },
+      { $replaceRoot: { newRoot: '$data' }},
+      { $group: {
+          _id: '$symbol',
+          date: { $first: '$date' },
+          type: { $first: '$type' },
+          exchange: { $first: '$exchange' },
+          market: { $first: '$market' },
+          symbol: { $first: '$symbol' },
+          name: { $first: '$name' },
+          openPrice: { $first: '$openPrice' },
+          highPrice: { $first: '$highPrice' },
+          lowPrice: { $first: '$lowPrice' },
+          closePrice: { $first: '$closePrice' },
+          change: { $first: '$change' },
+          changePercent: { $first: '$changePercent' },
+          tradeValue:{ $first: '$tradeValue' },
+          tradeVolume: { $first: '$tradeVolume' },
+          tradeWeight: { $first: '$tradeWeight' },
+          tradeValuePrev: { $last: '$tradeValue' },
+          tradeWeightPrev: { $last: '$tradeWeight' },
+        },
+      },
+      { $project: {
+          _id: 0,
+          date: 1,
+          type: 1,
+          exchange: 1,
+          market: 1,
+          symbol: 1,
+          name: 1,
+          openPrice: 1,
+          highPrice: 1,
+          lowPrice: 1,
+          closePrice: 1,
+          change: 1,
+          changePercent: 1,
+          tradeValue: 1,
+          tradeVolume: 1,
+          tradeWeight: 1,
+          tradeValuePrev: 1,
+          tradeWeightPrev: 1,
+          tradeValueChange: { $subtract: [ '$tradeValue', '$tradeValuePrev' ] },
+          tradeWeightChange: { $subtract: [ '$tradeWeight', '$tradeWeightPrev' ] },
+        },
+      },
+      { $sort: { symbol: 1 } },
     ]);
 
-    const [ tickers, tickersPrev ] = results.map(doc => doc.data);
-
-    const data = tickers.map(doc => {
-      const tradeValuePrev = find(tickersPrev, { symbol: doc.symbol }).tradeValue;
-      const tradeWeightPrev = find(tickersPrev, { symbol: doc.symbol }).tradeWeight;
-      const tradeValueChange = parseFloat((doc.tradeValue - tradeValuePrev).toPrecision(12));
-      const tradeWeightChange = parseFloat((doc.tradeWeight - tradeWeightPrev).toPrecision(12));
-      return { ...doc, tradeValuePrev, tradeWeightPrev, tradeValueChange, tradeWeightChange };
-    });
-
-    return data;
+    return results;
   }
 
   async getTopMovers(options?: { date?: string, market?: Market, direction?: 'up' | 'down', top?: number }) {
@@ -63,17 +99,17 @@ export class TickerRepository {
           changePercent: (direction === 'down') ? { $lt: 0 } : { $gt: 0 },
         },
       },
-      { $project: { _id: 0, __v: 0, createdAt: 0 , updatedAt: 0 } },
+      { $project: { _id: 0, __v: 0, createdAt: 0, updatedAt: 0 } },
       { $sort: { date: -1, changePercent: (direction === 'down') ? 1 : -1 } },
       { $group: { _id: '$date', data: { $push: '$$ROOT' } } },
       { $sort: { _id: -1 } },
       { $limit: 1 },
+      { $unwind: '$data' },
+      { $replaceRoot: { newRoot: '$data' }},
+      { $limit: top },
     ]);
 
-    const [ tickers ] = results.map(doc => doc.data);
-    const data = tickers.slice(0, top);
-
-    return data;
+    return results;
   }
 
   async getMostActives(options?: { date?: string, market?: Market, trade?: 'volume' | 'value', top?: number }) {
@@ -90,17 +126,17 @@ export class TickerRepository {
           market: market || { $ne: null },
         },
       },
-      { $project: { _id: 0, __v: 0, createdAt: 0 , updatedAt: 0 } },
+      { $project: { _id: 0, __v: 0, createdAt: 0, updatedAt: 0 } },
       { $sort: { date: -1, [key]: -1 } },
       { $group: { _id: '$date', data: { $push: '$$ROOT' } } },
       { $sort: { _id: -1 } },
       { $limit: 1 },
+      { $unwind: '$data' },
+      { $replaceRoot: { newRoot: '$data' }},
+      { $limit: top },
     ]);
 
-    const [ tickers ] = results.map(doc => doc.data);
-    const data = tickers.slice(0, top);
-
-    return data;
+    return results;
   }
 
   async getInstInvestorsTrades(options?: { date?: string, market?: Market, inst?: 'fini' | 'sitc' | 'dealers', net: 'buy' | 'sell', top?: number }) {
@@ -119,17 +155,17 @@ export class TickerRepository {
           [instKey]: (net === 'sell') ? { $lt: 0 } : { $gt: 0 },
         },
       },
-      { $project: { _id: 0, __v: 0, createdAt: 0 , updatedAt: 0 } },
+      { $project: { _id: 0, __v: 0, createdAt: 0, updatedAt: 0 } },
       { $sort: { date: -1, [instKey]: (net === 'sell') ? 1 : -1 } },
       { $group: { _id: '$date', data: { $push: '$$ROOT' } } },
       { $sort: { _id: -1 } },
       { $limit: 1 },
+      { $unwind: '$data' },
+      { $replaceRoot: { newRoot: '$data' }},
+      { $limit: top },
     ]);
 
-    const [ tickers ] = results.map(doc => doc.data);
-    const data = tickers.slice(0, top);
-
-    return data;
+    return results;
   }
 
   async getTickerSMAs(symbol: string, options?: { date?: string, days?: number }) {
@@ -140,13 +176,14 @@ export class TickerRepository {
       { $match: { symbol, date: { $lte: date } }},
       { $sort: { date: -1 } },
       { $project: {
-        _id: 0,
-        date: 1,
-        open: '$openPrice',
-        high: '$highPrice',
-        low: '$lowPrice',
-        close: '$closePrice',
-        volume: '$tradeVolume' },
+          _id: 0,
+          date: 1,
+          open: '$openPrice',
+          high: '$highPrice',
+          low: '$lowPrice',
+          close: '$closePrice',
+          volume: '$tradeVolume',
+        },
       },
       { $limit: days },
     ]);
